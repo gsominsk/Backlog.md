@@ -72,6 +72,7 @@ describe("MCP task references and documentation", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Feature with supporting material",
 					references: ["https://github.com/issue/123", "src/api.ts"],
 					documentation: ["https://design-docs.example.com", "docs/spec.md"],
@@ -91,13 +92,14 @@ describe("MCP task references and documentation", () => {
 
 	it("routes reference and documentation set, add, and remove edits", async () => {
 		await mcpServer.testInterface.callTool({
-			params: { name: "task_create", arguments: { title: "Task to edit" } },
+			params: { name: "task_create", arguments: { actorId: "test-actor", title: "Task to edit" } },
 		});
 
 		await mcpServer.testInterface.callTool({
 			params: {
 				name: "task_edit",
 				arguments: {
+					actorId: "test-actor",
 					id: "task-1",
 					references: ["ref-1.ts", "ref-2.ts"],
 					documentation: ["doc-1.md", "doc-2.md"],
@@ -108,6 +110,7 @@ describe("MCP task references and documentation", () => {
 			params: {
 				name: "task_edit",
 				arguments: {
+					actorId: "test-actor",
 					id: "task-1",
 					addReferences: ["ref-3.ts"],
 					removeReferences: ["ref-2.ts"],

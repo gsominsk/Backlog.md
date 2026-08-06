@@ -38,6 +38,7 @@ export const documentCreateSchema: JsonSchema = {
 		},
 		content: {
 			type: "string",
+			maxLength: 100000,
 		},
 		type: {
 			type: "string",
@@ -54,7 +55,7 @@ export const documentCreateSchema: JsonSchema = {
 			maxItems: 50,
 		},
 	},
-	required: ["title", "content"],
+	required: ["title"],
 	additionalProperties: false,
 };
 
@@ -73,6 +74,7 @@ export const documentUpdateSchema: JsonSchema = {
 		},
 		content: {
 			type: "string",
+			maxLength: 100000,
 		},
 		type: {
 			type: "string",
@@ -89,7 +91,7 @@ export const documentUpdateSchema: JsonSchema = {
 			maxItems: 50,
 		},
 	},
-	required: ["id", "content"],
+	required: ["id"],
 	additionalProperties: false,
 };
 

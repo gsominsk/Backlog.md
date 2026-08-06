@@ -1,6 +1,10 @@
 import { basename, join } from "node:path";
 import { DEFAULT_STATUSES } from "../../../constants/index.ts";
 import { findLocalDuplicateTaskIds } from "../../../core/duplicate-task-repair.ts";
+// HYBRID-BOARD: Claim ownership (spec §6)
+import { createActivityEntry } from "../../../domain/activity_entry.ts";
+// HYBRID-BOARD: ActivityLog (spec §5)
+import { appendActivity, readActivity } from "../../../file-system/activity-log.ts";
 import { isCreateLockError } from "../../../file-system/operations.ts";
 import {
 	isLocalEditableTask,
@@ -17,6 +21,7 @@ import {
 } from "../../../utils/milestone-filter.ts";
 import { resolveMilestoneInputForStorage } from "../../../utils/milestone-storage.ts";
 import { buildTaskUpdateInput } from "../../../utils/task-edit-builder.ts";
+import { getTaskPath } from "../../../utils/task-path.ts";
 import { createTaskSearchIndex } from "../../../utils/task-search.ts";
 import { sortByOrdinalAndPriority } from "../../../utils/task-sorting.ts";
 import { getTerminalStatus, isTerminalStatus } from "../../../utils/terminal-status.ts";
@@ -44,6 +49,10 @@ export type TaskCreateArgs = {
 	documentation?: string[];
 	modifiedFiles?: string[];
 	finalSummary?: string;
+	// HYBRID-BOARD: ActorClaim — actor identity (spec §4.4)
+	actorId?: string;
+	actorKind?: string;
+	traceId?: string; // ZCode traceId for cross-source correlation (doc-8)
 };
 
 export type TaskListArgs = {
@@ -137,6 +146,11 @@ export class TaskHandlers {
 				acceptanceCriteria,
 				definitionOfDoneAdd: args.definitionOfDoneAdd,
 				disableDefinitionOfDoneDefaults: args.disableDefinitionOfDoneDefaults,
+				// HYBRID-BOARD: ActorClaim — pass actor identity (spec §7.1)
+				...(args.actorId && { actorId: args.actorId }),
+				...(args.actorKind && { actorKind: args.actorKind }),
+				// doc-8: pass traceId for cross-source log correlation
+				...(args.traceId && { traceId: args.traceId }),
 			});
 
 			return await formatTaskCallResult(createdTask);
@@ -145,9 +159,9 @@ export class TaskHandlers {
 				throw new BacklogToolError(error.message, "OPERATION_FAILED");
 			}
 			if (error instanceof Error) {
-				throw new BacklogToolError(error.message, "VALIDATION_ERROR");
+				throw new BacklogToolError(error.message, "OPERATION_FAILED");
 			}
-			throw new BacklogToolError(String(error), "VALIDATION_ERROR");
+			throw new BacklogToolError(String(error), "OPERATION_FAILED");
 		}
 	}
 
@@ -438,7 +452,12 @@ export class TaskHandlers {
 		return await formatTaskCallResult(task);
 	}
 
-	async archiveTask(args: { id: string }): Promise<CallToolResult> {
+	async archiveTask(args: {
+		id: string;
+		actorId?: string;
+		actorKind?: string;
+		traceId?: string;
+	}): Promise<CallToolResult> {
 		const draft = await this.core.filesystem.loadDraft(args.id);
 		if (draft) {
 			const success = await this.core.archiveDraft(draft.id);
@@ -469,11 +488,32 @@ export class TaskHandlers {
 			throw new BacklogToolError(`Failed to archive task: ${args.id}`, "OPERATION_FAILED");
 		}
 
+		// Activity log — best-effort, only when actorId provided
+		if (args.actorId) {
+			const backlogDir = join(this.core.fs.rootDir, this.core.fs.backlogDirName);
+			await appendActivity(
+				backlogDir,
+				task.id,
+				createActivityEntry({
+					actorId: args.actorId,
+					action: "archive",
+					from: task.status,
+					to: "Archived",
+					traceId: args.traceId,
+				}),
+			).catch(() => {});
+		}
+
 		const refreshed = (await this.core.getTask(task.id)) ?? task;
 		return await formatTaskCallResult(refreshed);
 	}
 
-	async completeTask(args: { id: string }): Promise<CallToolResult> {
+	async completeTask(args: {
+		id: string;
+		actorId?: string;
+		actorKind?: string;
+		traceId?: string;
+	}): Promise<CallToolResult> {
 		const task = await this.loadTaskOrThrow(args.id);
 
 		if (!isLocalEditableTask(task)) {
@@ -495,6 +535,23 @@ export class TaskHandlers {
 		const success = await this.core.completeTask(task.id);
 		if (!success) {
 			throw new BacklogToolError(`Failed to complete task: ${args.id}`, "OPERATION_FAILED");
+		}
+
+		// Activity log — best-effort, only when actorId provided
+		if (args.actorId) {
+			const backlogDir = join(this.core.fs.rootDir, this.core.fs.backlogDirName);
+			await appendActivity(
+				backlogDir,
+				task.id,
+				createActivityEntry({
+					actorId: args.actorId,
+					action: "complete",
+					from: task.status,
+					to: "Completed",
+					trigger: "complete",
+					traceId: args.traceId,
+				}),
+			).catch(() => {});
 		}
 
 		return await formatTaskCallResult(task, [`Completed task ${task.id}.`], {
@@ -536,9 +593,260 @@ export class TaskHandlers {
 			return await formatTaskCallResult(updatedTask);
 		} catch (error) {
 			if (error instanceof Error) {
-				throw new BacklogToolError(error.message, "VALIDATION_ERROR");
+				throw new BacklogToolError(error.message, "OPERATION_FAILED");
 			}
-			throw new BacklogToolError(String(error), "VALIDATION_ERROR");
+			throw new BacklogToolError(String(error), "OPERATION_FAILED");
+		}
+	}
+
+	// HYBRID-BOARD: ActivityLog — task_activity_get handler (spec §5.6)
+	async getActivity(args: { id: string; limit?: number; offset?: number }): Promise<CallToolResult> {
+		try {
+			const backlogDir = join(this.core.fs.rootDir, this.core.fs.backlogDirName);
+			const limit = typeof args.limit === "number" ? args.limit : 50;
+			const offset = typeof args.offset === "number" ? args.offset : 0;
+			const { entries, total } = await readActivity(backlogDir, args.id, limit, offset);
+
+			return {
+				content: [
+					{
+						type: "text",
+						text: JSON.stringify(
+							{
+								taskId: args.id,
+								total,
+								limit,
+								offset,
+								entries,
+							},
+							null,
+							2,
+						),
+					},
+				],
+			};
+		} catch (error) {
+			if (error instanceof Error) {
+				throw new BacklogToolError(error.message, "OPERATION_FAILED");
+			}
+			throw new BacklogToolError(String(error), "OPERATION_FAILED");
+		}
+	}
+
+	// HYBRID-BOARD: Claim ownership — three-way logic (spec §6.4-6.5)
+	async claimTask(args: {
+		id: string;
+		actorId: string;
+		actorKind?: string;
+		ttlSeconds?: number;
+		traceId?: string;
+	}): Promise<CallToolResult> {
+		try {
+			const task = await this.core.getTask(args.id);
+			if (!task) {
+				throw new BacklogToolError(`Task not found: ${args.id}`, "TASK_NOT_FOUND");
+			}
+
+			// Terminal check (G4 fix) — can't claim done/archived tasks
+			const statuses = await this.getConfiguredStatuses();
+			if (isTerminalStatus(task.status, statuses)) {
+				return {
+					content: [
+						{
+							type: "text",
+							text: JSON.stringify({ result: "terminal_item", id: args.id, status: task.status }, null, 2),
+						},
+					],
+				};
+			}
+
+			const taskPath = await getTaskPath(args.id, this.core);
+			if (!taskPath) {
+				throw new BacklogToolError(`Task file not found: ${args.id}`, "TASK_NOT_FOUND");
+			}
+
+			const ttl = args.ttlSeconds ?? 900;
+
+			// Three-way logic inside withWriteLock (spec §6.4)
+			return await this.core.fs.withWriteLock(taskPath, async () => {
+				// Read fresh from disk (bypass Bun.file cache) — critical after atomicWrite
+				const lockedTask = await this.core.fs.readTaskFresh(args.id);
+				if (!lockedTask) {
+					throw new BacklogToolError(`Task not found: ${args.id}`, "TASK_NOT_FOUND");
+				}
+				if (isTerminalStatus(lockedTask.status, statuses)) {
+					return {
+						content: [
+							{
+								type: "text",
+								text: JSON.stringify({ result: "terminal_item", id: args.id, status: lockedTask.status }, null, 2),
+							},
+						],
+					};
+				}
+
+				// Compute now inside lock — fresh timestamp for each call
+				const now = new Date();
+				const currentExpired = lockedTask.claim ? new Date(lockedTask.claim.expiresAt) < now : true;
+
+				// No claim or expired → set/take
+				if (!lockedTask.claim || currentExpired) {
+					const newClaim = {
+						by: args.actorId,
+						at: now.toISOString(),
+						expiresAt: new Date(now.getTime() + ttl * 1000).toISOString(),
+					};
+					const updated = { ...lockedTask, claim: newClaim };
+					await this.core.fs.saveTaskUnlocked(updated);
+
+					// Activity log — best-effort
+					const backlogDir = join(this.core.fs.rootDir, this.core.fs.backlogDirName);
+					await appendActivity(
+						backlogDir,
+						lockedTask.id,
+						createActivityEntry({
+							actorId: args.actorId,
+							action: "claim",
+							trigger: "start",
+							traceId: args.traceId,
+						}),
+					).catch(() => {});
+
+					return {
+						content: [
+							{
+								type: "text",
+								text: JSON.stringify({ result: "success", id: args.id, claim: newClaim }, null, 2),
+							},
+						],
+					};
+				}
+
+				// Same actor → renew
+				if (lockedTask.claim.by === args.actorId) {
+					const renewedClaim = {
+						...lockedTask.claim,
+						at: now.toISOString(),
+						expiresAt: new Date(now.getTime() + ttl * 1000).toISOString(),
+					};
+					const updated = { ...lockedTask, claim: renewedClaim };
+					await this.core.fs.saveTaskUnlocked(updated);
+					return {
+						content: [
+							{
+								type: "text",
+								text: JSON.stringify({ result: "success", id: args.id, claim: renewedClaim, renewed: true }, null, 2),
+							},
+						],
+					};
+				}
+
+				// Different actor, active claim → DENY (return actor ID, no tiered disclosure)
+				const retryAfterMs = Math.max(0, new Date(lockedTask.claim.expiresAt).getTime() - now.getTime());
+				return {
+					content: [
+						{
+							type: "text",
+							text: JSON.stringify(
+								{
+									result: "already_claimed",
+									id: args.id,
+									claimedBy: lockedTask.claim.by,
+									retryAfterMs,
+								},
+								null,
+								2,
+							),
+						},
+					],
+				};
+			});
+		} catch (error) {
+			if (error instanceof Error) {
+				throw new BacklogToolError(error.message, "OPERATION_FAILED");
+			}
+			throw new BacklogToolError(String(error), "OPERATION_FAILED");
+		}
+	}
+
+	// HYBRID-BOARD: Release claim (spec §6.5)
+	async releaseTask(args: { id: string; actorId: string; traceId?: string }): Promise<CallToolResult> {
+		try {
+			const task = await this.core.getTask(args.id);
+			if (!task) {
+				throw new BacklogToolError(`Task not found: ${args.id}`, "TASK_NOT_FOUND");
+			}
+
+			const taskPath = await getTaskPath(args.id, this.core);
+			if (!taskPath) {
+				throw new BacklogToolError(`Task file not found: ${args.id}`, "TASK_NOT_FOUND");
+			}
+
+			return await this.core.fs.withWriteLock(taskPath, async () => {
+				const lockedTask = await this.core.fs.readTaskFresh(args.id);
+				if (!lockedTask) {
+					throw new BacklogToolError(`Task not found: ${args.id}`, "TASK_NOT_FOUND");
+				}
+
+				if (!lockedTask.claim) {
+					return {
+						content: [
+							{
+								type: "text",
+								text: JSON.stringify({ result: "not_claimed", id: args.id }, null, 2),
+							},
+						],
+					};
+				}
+
+				if (lockedTask.claim.by !== args.actorId) {
+					return {
+						content: [
+							{
+								type: "text",
+								text: JSON.stringify(
+									{
+										result: "not_claimed_by_you",
+										id: args.id,
+										claimedBy: lockedTask.claim.by,
+									},
+									null,
+									2,
+								),
+							},
+						],
+					};
+				}
+
+				const updated = { ...lockedTask, claim: null };
+				await this.core.fs.saveTaskUnlocked(updated);
+
+				// Activity log — best-effort
+				const backlogDir = join(this.core.fs.rootDir, this.core.fs.backlogDirName);
+				await appendActivity(
+					backlogDir,
+					lockedTask.id,
+					createActivityEntry({
+						actorId: args.actorId,
+						action: "release",
+						traceId: args.traceId,
+					}),
+				).catch(() => {});
+
+				return {
+					content: [
+						{
+							type: "text",
+							text: JSON.stringify({ result: "success", id: args.id }, null, 2),
+						},
+					],
+				};
+			});
+		} catch (error) {
+			if (error instanceof Error) {
+				throw new BacklogToolError(error.message, "OPERATION_FAILED");
+			}
+			throw new BacklogToolError(String(error), "OPERATION_FAILED");
 		}
 	}
 }

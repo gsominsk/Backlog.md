@@ -43,6 +43,41 @@ export class McpConnectionError extends BacklogToolError {
 }
 
 /**
+ * Transport-dropped field error — MCP transport serialization drops large
+ * string values (>1KB) during subagent tool calls. The server receives the
+ * call with the field missing. This is a transport limitation, not a server error.
+ */
+export class McpTransportDroppedError extends BacklogToolError {
+	constructor(message: string, details?: { fields: string[]; receivedFields: string[] }) {
+		super(message, "TRANSPORT_DROPPED", details);
+	}
+}
+
+/**
+ * Builds an actionable error message for transport-dropped fields.
+ * Gives the model options (reduce, split, or Write tool), not just "don't retry".
+ */
+export function buildTransportDroppedMessage(
+	toolName: string,
+	droppedFields: string[],
+	receivedFields: string[],
+): string {
+	const fieldsList = droppedFields.map((f) => `'${f}'`).join(", ");
+	const receivedList = receivedFields.join(", ");
+	return [
+		`Required field(s) ${fieldsList} missing from ${toolName} call.`,
+		`Received fields: ${receivedList}. The ${fieldsList} string was likely dropped by MCP`,
+		"transport serialization (occurs with content >1KB in subagent calls).",
+		"",
+		"Options:",
+		"1. Reduce content to <1KB and retry the call",
+		"2. Split into multiple calls (create with short content, then update with additions)",
+		"3. Use Write tool to write directly to the file — but note that frontmatter,",
+		"   search index, and board metadata will not be updated (needs separate MCP call)",
+	].join("\n");
+}
+
+/**
  * Internal error for unexpected failures
  */
 export class McpInternalError extends BacklogToolError {
@@ -116,15 +151,14 @@ export function handleMcpSuccess(data: unknown): CallToolResult {
  * Format error messages in markdown for consistent MCP error responses
  */
 export function formatErrorMarkdown(code: string, message: string, details?: unknown, includeDetails = false): string {
+	// Always prefix with code so model can distinguish error types in text
+	let result = `${code}: ${message}`;
+
 	// Include details only when explicitly requested (e.g., debug mode)
 	if (includeDetails && details) {
-		let result = `${code}: ${message}`;
-
 		const detailsText = typeof details === "string" ? details : JSON.stringify(details, null, 2);
 		result += `\n  ${detailsText}`;
-
-		return result;
 	}
 
-	return message;
+	return result;
 }

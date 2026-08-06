@@ -739,6 +739,46 @@ export class ContentStore {
 		const tasksDir = this.filesystem.tasksDir;
 		const watcher: FSWatcher = watch(tasksDir, { recursive: false }, (eventType, filename) => {
 			const file = this.normalizeFilename(filename);
+			// HYBRID-BOARD: atomic-write uses temp+rename. On macOS, fs.watch fires
+			// the rename event with the TEMP filename, not the target. Parse the temp
+			// name to extract the target and trigger the fast (single-file) path.
+			if (file && file.startsWith(".") && file.endsWith(".tmp")) {
+				const match = file.match(/^\.+(.+)\.\d+-[a-f0-9]+\.tmp$/);
+				if (match?.[1]) {
+					const targetFile = match[1];
+					if (targetFile.endsWith(".md") && /^[a-zA-Z]+-/.test(targetFile)) {
+						const [taskId] = targetFile.split(" ");
+						if (taskId) {
+							const normalizedTaskId = normalizeTaskId(taskId);
+							const fullPath = join(tasksDir, targetFile);
+							void this.enqueueRoot(epoch, async () => {
+								await this.reconcileOrSchedule(`task:${normalizedTaskId}`, epoch, async () => {
+									if (!(await Bun.file(fullPath).exists())) {
+										this.removeWatchedTask(normalizedTaskId);
+										return false;
+									}
+									try {
+										const task = {
+											...normalizeTaskIdentity(parseTask(await Bun.file(fullPath).text())),
+											filePath: fullPath,
+										};
+										if (!taskIdsEqual(task.id, normalizedTaskId)) return true;
+										const previous = this.tasks.get(normalizedTaskId);
+										if (previous && !this.hasTaskChanged(previous, task)) return true;
+										this.publishWatchedTask(task);
+										return false;
+									} catch {
+										return true;
+									}
+								});
+							});
+						}
+					}
+				}
+				return; // dotfile temp events handled or irrelevant — no full rescan
+			}
+			// HYBRID-BOARD: ignore other dotfiles (.DS_Store, etc.)
+			if (file && file.startsWith(".")) return;
 			if (!file || !/^[a-zA-Z]+-/.test(file) || !file.endsWith(".md")) {
 				void this.enqueueRoot(epoch, async () => this.refreshTasksFromDisk(undefined, epoch));
 				return;
@@ -822,6 +862,40 @@ export class ContentStore {
 		const decisionsDir = this.filesystem.decisionsDir;
 		const watcher: FSWatcher = watch(decisionsDir, { recursive: false }, (eventType, filename) => {
 			const file = this.normalizeFilename(filename);
+			// HYBRID-BOARD: atomic-write temp file — extract target, trigger fast path
+			if (file && file.startsWith(".") && file.endsWith(".tmp")) {
+				const match = file.match(/^\.+(.+)\.\d+-[a-f0-9]+\.tmp$/);
+				if (match?.[1]) {
+					const targetFile = match[1];
+					if (targetFile.startsWith("decision-") && targetFile.endsWith(".md")) {
+						const [id] = targetFile.split(" - ");
+						if (id) {
+							const fullPath = join(decisionsDir, targetFile);
+							void this.enqueueRoot(epoch, async () => {
+								await this.reconcileOrSchedule(`decision:${id}`, epoch, async () => {
+									if (!(await Bun.file(fullPath).exists())) {
+										this.removeWatchedDecision(id);
+										return false;
+									}
+									try {
+										const decision = parseDecision(await Bun.file(fullPath).text());
+										if (decision.id !== id) return true;
+										const previous = this.decisions.get(id);
+										if (previous && !this.hasDecisionChanged(previous, decision)) return true;
+										this.publishWatchedDecision(decision);
+										return false;
+									} catch {
+										return true;
+									}
+								});
+							});
+						}
+					}
+				}
+				return; // dotfile temp events handled or irrelevant — no full rescan
+			}
+			// HYBRID-BOARD: ignore other dotfiles (.DS_Store, etc.)
+			if (file && file.startsWith(".")) return;
 			if (!file?.startsWith("decision-") || !file.endsWith(".md")) {
 				void this.enqueueRoot(epoch, async () => this.refreshDecisionsFromDisk(undefined, epoch));
 				return;
@@ -887,6 +961,44 @@ export class ContentStore {
 		return this.createDirectoryWatcher(docsDir, epoch, async (eventType, absolutePath, relativePath) => {
 			if (!this.isRootWatcherCurrent(epoch)) return;
 			const base = basename(absolutePath);
+			// HYBRID-BOARD: atomic-write temp file — extract target, trigger fast path
+			if (base.startsWith(".") && base.endsWith(".tmp")) {
+				const match = base.match(/^\.+(.+)\.\d+-[a-f0-9]+\.tmp$/);
+				if (match?.[1]) {
+					const targetBase = match[1];
+					if (targetBase.startsWith("doc-") && targetBase.endsWith(".md")) {
+						const [id] = targetBase.split(" - ");
+						if (id) {
+							const targetPath = join(dirname(absolutePath), targetBase);
+							const targetRelative = relativePath ? relativePath.replace(/[^/]+$/, targetBase) : targetBase;
+							void this.enqueueRoot(epoch, async () => {
+								await this.reconcileOrSchedule(`document:${id}`, epoch, async () => {
+									if (!(await Bun.file(targetPath).exists())) {
+										this.removeWatchedDocument(id);
+										return false;
+									}
+									try {
+										const document = {
+											...parseDocument(await Bun.file(targetPath).text()),
+											path: normalizeDocumentRelativePath(targetRelative),
+										};
+										if (document.id !== id) return true;
+										const previous = this.documents.get(id);
+										if (previous && !this.hasDocumentChanged(previous, document)) return true;
+										this.publishWatchedDocument(document);
+										return false;
+									} catch {
+										return true;
+									}
+								});
+							});
+						}
+					}
+				}
+				return; // dotfile temp events handled or irrelevant — no full rescan
+			}
+			// HYBRID-BOARD: ignore other dotfiles (.DS_Store, etc.)
+			if (base.startsWith(".")) return;
 			if (!base.endsWith(".md")) {
 				if (relativePath === null) await this.refreshDocumentsFromDisk(undefined, epoch);
 				return;

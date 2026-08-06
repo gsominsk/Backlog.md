@@ -22,6 +22,8 @@ import {
 import { Core } from "../core/backlog.ts";
 import { getPackageName } from "../utils/app-info.ts";
 import { resolveBacklogDirectory } from "../utils/backlog-directory.ts";
+// HYBRID-BOARD: Claim ownership auto-renew (spec §6.6)
+import { getTaskPath } from "../utils/task-path.ts";
 import { getVersion } from "../utils/version.ts";
 import { registerInitRequiredResource } from "./resources/init-required/index.ts";
 import { registerWorkflowResources } from "./resources/workflow/index.ts";
@@ -408,7 +410,66 @@ export class McpServer extends Core {
 			throw new McpError(ErrorCode.InvalidParams, `Tool not found: ${name}`);
 		}
 
+		// doc-8 Phase 3: extract traceId from MCP _meta as fallback.
+		// MCP protocol allows clients to pass _meta on every tools/call request.
+		// If ZCode (or any MCP client) sends _meta.traceId, use it as a fallback
+		// when the caller didn't explicitly pass traceId in arguments.
+		// This enables cross-source log correlation for ALL callers (main agent,
+		// subagents, external MCP clients) — the MCP server is a single chokepoint.
+		if (!args.traceId) {
+			const metaTraceId = (request as any).params?._meta?.traceId ?? (extra as any)?._meta?.traceId;
+			if (typeof metaTraceId === "string" && metaTraceId.trim().length > 0) {
+				args.traceId = metaTraceId.trim();
+			}
+		}
+
+		// HYBRID-BOARD: Claim auto-renew (spec §6.6)
+		// Before dispatching, if the tool call includes actorId + id and the
+		// task has an active claim by this actor, renew the claim TTL.
+		// This makes TTL a liveness probe — as long as the agent is making
+		// tool calls, its claim stays alive. Best-effort: errors don't block.
+		// Skip for task_claim/task_release — they manage claim themselves.
+		const isClaimTool = name === "task_claim" || name === "task_release";
+		if (!isClaimTool && typeof args.actorId === "string" && typeof args.id === "string" && args.actorId && args.id) {
+			try {
+				await this.renewClaimIfHeld(args.id, args.actorId);
+			} catch {
+				// Best-effort — don't fail the tool call
+			}
+		}
+
 		return await tool.handler(args);
+	}
+
+	// HYBRID-BOARD: Claim auto-renew helper (spec §6.6)
+	// If the task has an active claim by this actor, extend the TTL.
+	// Called before every tool dispatch that includes actorId + id.
+	private async renewClaimIfHeld(taskId: string, actorId: string): Promise<void> {
+		const task = await this.getTask(taskId);
+		if (!task?.claim || task.claim.by !== actorId) return;
+
+		// Only renew if claim is active (not expired — expired claims are handled by claim tool)
+		const now = new Date();
+		if (new Date(task.claim.expiresAt) < now) return;
+
+		const ttl = 900; // default TTL
+		const taskPath = await getTaskPath(taskId, this);
+		if (!taskPath) return;
+
+		await this.filesystem.withWriteLock(taskPath, async () => {
+			const lockedTask = await this.filesystem.readTaskFresh(taskId);
+			if (!lockedTask?.claim || lockedTask.claim.by !== actorId) return;
+			if (new Date(lockedTask.claim.expiresAt) < now) return;
+
+			await this.filesystem.saveTaskUnlocked({
+				...lockedTask,
+				claim: {
+					...lockedTask.claim,
+					at: now.toISOString(),
+					expiresAt: new Date(now.getTime() + ttl * 1000).toISOString(),
+				},
+			});
+		});
 	}
 
 	protected async listResources(extra?: ServerRequestExtra): Promise<ListResourcesResult> {

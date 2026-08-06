@@ -68,6 +68,14 @@ export function serializeTask(task: Task): string {
 		...(task.type && { type: task.type }),
 		...(task.ordinal !== undefined && { ordinal: task.ordinal }),
 		...(task.onStatusChange && { onStatusChange: task.onStatusChange }),
+		// HYBRID-BOARD: ActorClaim — serialize flat snake_case fields (spec §4.3)
+		...(task.createdById && { created_by_id: task.createdById }),
+		...(task.createdByKind && { created_by_kind: task.createdByKind }),
+		...(task.updatedById && { updated_by_id: task.updatedById }),
+		...(task.updatedByKind && { updated_by_kind: task.updatedByKind }),
+		// HYBRID-BOARD: Claim ownership — serialize nested object (spec §6.3)
+		// null = unclaimed (omit field), object = active claim
+		...(task.claim && { claim: { by: task.claim.by, at: task.claim.at, expires_at: task.claim.expiresAt } }),
 	};
 
 	let contentBody = task.rawContent ?? "";

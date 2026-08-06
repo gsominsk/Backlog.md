@@ -40,6 +40,10 @@ export interface TaskEditArgs {
 	definitionOfDoneRemove?: number[];
 	definitionOfDoneCheck?: number[];
 	definitionOfDoneUncheck?: number[];
+	// HYBRID-BOARD: ActorClaim — actor identity for attribution (spec §7.1)
+	actorId?: string;
+	actorKind?: string;
+	traceId?: string; // ZCode traceId for cross-source correlation (doc-8)
 }
 
 export type TaskEditRequest = TaskEditArgs & { id: string };

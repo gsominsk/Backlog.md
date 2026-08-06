@@ -1,6 +1,6 @@
 import type { Document, DocumentSearchResult } from "../../../types/index.ts";
 import { formatUtcDateForDisplay } from "../../../utils/utc-date-display.ts";
-import { BacklogToolError } from "../../errors/mcp-errors.ts";
+import { BacklogToolError, buildTransportDroppedMessage, McpTransportDroppedError } from "../../errors/mcp-errors.ts";
 import type { McpServer } from "../../server.ts";
 import type { CallToolResult } from "../../types.ts";
 import { formatDocumentCallResult } from "../../utils/document-response.ts";
@@ -115,6 +115,19 @@ export class DocumentHandlers {
 	}
 
 	async createDocument(args: DocumentCreateArgs): Promise<CallToolResult> {
+		if (!args.content || args.content.length === 0) {
+			throw new McpTransportDroppedError(
+				buildTransportDroppedMessage(
+					"document_create",
+					["content"],
+					Object.keys(args).filter((k) => args[k as keyof DocumentCreateArgs] !== undefined),
+				),
+				{
+					fields: ["content"],
+					receivedFields: Object.keys(args).filter((k) => args[k as keyof DocumentCreateArgs] !== undefined),
+				},
+			);
+		}
 		try {
 			const document = await this.core.createDocumentFromInput({
 				title: args.title,
@@ -136,6 +149,19 @@ export class DocumentHandlers {
 
 	async updateDocument(args: DocumentUpdateArgs): Promise<CallToolResult> {
 		await this.loadDocumentOrThrow(args.id);
+		if (!args.content || args.content.length === 0) {
+			throw new McpTransportDroppedError(
+				buildTransportDroppedMessage(
+					"document_update",
+					["content"],
+					Object.keys(args).filter((k) => args[k as keyof DocumentUpdateArgs] !== undefined),
+				),
+				{
+					fields: ["content"],
+					receivedFields: Object.keys(args).filter((k) => args[k as keyof DocumentUpdateArgs] !== undefined),
+				},
+			);
+		}
 
 		try {
 			const document = await this.core.updateDocumentFromInput({

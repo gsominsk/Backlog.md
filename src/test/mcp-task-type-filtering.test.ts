@@ -32,9 +32,9 @@ describe("MCP task type filtering adapter", () => {
 		registerTaskTools(server, config);
 
 		for (const args of [
-			{ title: "Typed bug", type: "bug", status: "To Do" },
-			{ title: "Typed epic", type: "epic", status: "In Progress" },
-			{ title: "Untyped legacy", status: "To Do" },
+			{ title: "Typed bug", type: "bug", status: "To Do", actorId: "test-actor" },
+			{ title: "Typed epic", type: "epic", status: "In Progress", actorId: "test-actor" },
+			{ title: "Untyped legacy", status: "To Do", actorId: "test-actor" },
 		]) {
 			const result = await server.testInterface.callTool({
 				params: { name: "task_create", arguments: args },
@@ -110,8 +110,8 @@ describe("MCP task type filtering adapter", () => {
 
 	it("applies the same type filter to drafts", async () => {
 		for (const args of [
-			{ title: "Bug draft", type: "Bug", status: "Draft" },
-			{ title: "Epic draft", type: "Epic", status: "Draft" },
+			{ title: "Bug draft", type: "Bug", status: "Draft", actorId: "test-actor" },
+			{ title: "Epic draft", type: "Epic", status: "Draft", actorId: "test-actor" },
 		]) {
 			const result = await server.testInterface.callTool({
 				params: { name: "task_create", arguments: args },

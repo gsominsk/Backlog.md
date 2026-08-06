@@ -77,7 +77,7 @@ describe("MCP workspace root resolution", () => {
 		try {
 			await client.callTool({
 				name: "task_create",
-				arguments: { title: "Lands in workspace" },
+				arguments: { actorId: "test-actor", title: "Lands in workspace" },
 			});
 
 			expect(server.filesystem.rootDir).toBe(workspaceProject);
@@ -103,7 +103,7 @@ describe("MCP workspace root resolution", () => {
 		try {
 			await client.callTool({
 				name: "task_create",
-				arguments: { title: "Lands in startup" },
+				arguments: { actorId: "test-actor", title: "Lands in startup" },
 			});
 
 			expect(server.filesystem.rootDir).toBe(startupProject);
@@ -129,7 +129,7 @@ describe("MCP workspace root resolution", () => {
 		try {
 			await client.callTool({
 				name: "task_create",
-				arguments: { title: "Lands in pinned" },
+				arguments: { actorId: "test-actor", title: "Lands in pinned" },
 			});
 
 			expect(server.filesystem.rootDir).toBe(pinnedProject);
@@ -158,7 +158,7 @@ describe("MCP workspace root resolution", () => {
 		try {
 			await client.callTool({
 				name: "task_create",
-				arguments: { title: "Lands in package" },
+				arguments: { actorId: "test-actor", title: "Lands in package" },
 			});
 
 			expect(server.filesystem.rootDir).toBe(packageProject);
@@ -185,7 +185,7 @@ describe("MCP workspace root resolution", () => {
 		try {
 			await client.callTool({
 				name: "task_create",
-				arguments: { title: "Lands in startup" },
+				arguments: { actorId: "test-actor", title: "Lands in startup" },
 			});
 
 			expect(server.filesystem.rootDir).toBe(startupProject);
@@ -214,7 +214,7 @@ describe("MCP workspace root resolution", () => {
 			// Client is in workspaceProject -> server follows it there.
 			await client.callTool({
 				name: "task_create",
-				arguments: { title: "In workspace" },
+				arguments: { actorId: "test-actor", title: "In workspace" },
 			});
 			expect(server.filesystem.rootDir).toBe(workspaceProject);
 
@@ -225,7 +225,7 @@ describe("MCP workspace root resolution", () => {
 			await client.sendRootsListChanged();
 			await client.callTool({
 				name: "task_create",
-				arguments: { title: "Back home" },
+				arguments: { actorId: "test-actor", title: "Back home" },
 			});
 
 			expect(server.filesystem.rootDir).toBe(startupProject);
@@ -255,7 +255,7 @@ describe("MCP workspace root resolution", () => {
 		try {
 			await client.callTool({
 				name: "task_create",
-				arguments: { title: "Worktree task" },
+				arguments: { actorId: "test-actor", title: "Worktree task" },
 			});
 
 			expect(server.filesystem.rootDir).toBe(worktree);

@@ -36,6 +36,14 @@ export interface TaskCommentInput {
 	createdDate?: string;
 }
 
+// HYBRID-BOARD: Claim ownership — nested object (spec §6.2)
+// Structural invariant: null = unclaimed, object = active claim with all 3 fields.
+export interface TaskClaim {
+	readonly by: string; // actor ID who holds the claim
+	readonly at: string; // ISO 8601 — when claimed
+	readonly expiresAt: string; // ISO 8601 — TTL expiry
+}
+
 export interface Task {
 	id: string;
 	title: string;
@@ -75,6 +83,13 @@ export interface Task {
 	source?: "local" | "remote" | "completed" | "local-branch";
 	/** Optional per-task callback command to run on status change (overrides global config) */
 	onStatusChange?: string;
+	// HYBRID-BOARD: ActorClaim — flat snake_case fields (spec §4.2)
+	createdById?: string;
+	createdByKind?: string;
+	updatedById?: string;
+	updatedByKind?: string;
+	// HYBRID-BOARD: Claim ownership — nested object (spec §6.2)
+	claim?: TaskClaim | null;
 }
 
 export interface MilestoneBucket {
@@ -124,6 +139,10 @@ export interface TaskCreateInput {
 	definitionOfDoneAdd?: string[];
 	disableDefinitionOfDoneDefaults?: boolean;
 	rawContent?: string;
+	// HYBRID-BOARD: ActorClaim — actor identity for task creation (spec §4.4, §7.1)
+	actorId?: string;
+	actorKind?: string;
+	traceId?: string; // doc-8: ZCode traceId for cross-source log correlation
 }
 
 export interface TaskUpdateInput {
@@ -168,6 +187,10 @@ export interface TaskUpdateInput {
 	checkDefinitionOfDone?: number[];
 	uncheckDefinitionOfDone?: number[];
 	rawContent?: string;
+	// HYBRID-BOARD: ActorClaim — actor identity for task updates (spec §4.4, §7.1)
+	actorId?: string;
+	actorKind?: string;
+	traceId?: string; // doc-8: ZCode traceId for cross-source log correlation
 }
 
 export interface TaskListFilter {

@@ -1,5 +1,13 @@
 import matter from "gray-matter";
-import type { AcceptanceCriterion, Decision, Document, Milestone, ParsedMarkdown, Task } from "../types/index.ts";
+import type {
+	AcceptanceCriterion,
+	Decision,
+	Document,
+	Milestone,
+	ParsedMarkdown,
+	Task,
+	TaskClaim,
+} from "../types/index.ts";
 import { normalizePriorityValue } from "../utils/priority-config.ts";
 import {
 	AcceptanceCriteriaManager,
@@ -145,6 +153,21 @@ export function parseMarkdown(content: string): ParsedMarkdown {
 	};
 }
 
+// HYBRID-BOARD: Parse nested claim object from frontmatter (spec §6.3)
+// gray-matter parses nested YAML objects natively, but we validate the shape.
+function parseClaimFromFrontmatter(value: unknown): TaskClaim | null | undefined {
+	if (value === null || value === undefined) return value as null | undefined;
+	if (typeof value !== "object") return undefined;
+	const obj = value as Record<string, unknown>;
+	const by = obj.by;
+	const at = obj.at;
+	const expiresAt = obj.expires_at ?? obj.expiresAt;
+	if (typeof by !== "string" || typeof at !== "string" || typeof expiresAt !== "string") {
+		return undefined;
+	}
+	return { by, at, expiresAt };
+}
+
 export function parseTask(content: string): Task {
 	const { frontmatter, content: rawContent } = parseMarkdown(content);
 
@@ -193,6 +216,13 @@ export function parseTask(content: string): Task {
 		type: frontmatter.type ? String(frontmatter.type) : undefined,
 		ordinal: frontmatter.ordinal !== undefined ? Number(frontmatter.ordinal) : undefined,
 		onStatusChange: frontmatter.onStatusChange ? String(frontmatter.onStatusChange) : undefined,
+		// HYBRID-BOARD: ActorClaim — parse flat snake_case fields (spec §4.3)
+		createdById: frontmatter.created_by_id ? String(frontmatter.created_by_id) : undefined,
+		createdByKind: frontmatter.created_by_kind ? String(frontmatter.created_by_kind) : undefined,
+		updatedById: frontmatter.updated_by_id ? String(frontmatter.updated_by_id) : undefined,
+		updatedByKind: frontmatter.updated_by_kind ? String(frontmatter.updated_by_kind) : undefined,
+		// HYBRID-BOARD: Claim ownership — parse nested object (spec §6.3)
+		claim: parseClaimFromFrontmatter(frontmatter.claim),
 	};
 }
 

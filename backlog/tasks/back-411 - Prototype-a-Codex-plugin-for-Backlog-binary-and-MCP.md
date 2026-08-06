@@ -11,6 +11,7 @@ documentation:
   - README.md
   - DEVELOPMENT.md
   - /Users/alex/.codex/skills/.system/plugin-creator/SKILL.md
+ordinal: 173000
 ---
 
 ## Description

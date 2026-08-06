@@ -83,6 +83,7 @@ describe("MCP milestone tools", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Milestone task",
 					milestone: "Release 1.0",
 				},
@@ -96,6 +97,7 @@ describe("MCP milestone tools", () => {
 			params: {
 				name: "task_edit",
 				arguments: {
+					actorId: "test-actor",
 					id: "task-1",
 					milestone: null,
 				},
@@ -118,6 +120,7 @@ describe("MCP milestone tools", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Milestone task",
 					milestone: "Release 1.0",
 				},
@@ -131,6 +134,7 @@ describe("MCP milestone tools", () => {
 			params: {
 				name: "task_edit",
 				arguments: {
+					actorId: "test-actor",
 					id: "task-1",
 					milestone: "Release 2.0",
 				},
@@ -144,6 +148,7 @@ describe("MCP milestone tools", () => {
 			params: {
 				name: "task_edit",
 				arguments: {
+					actorId: "test-actor",
 					id: "task-1",
 					milestone: "m-0",
 				},
@@ -157,6 +162,7 @@ describe("MCP milestone tools", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Milestone task by id",
 					milestone: "m-1",
 				},
@@ -169,6 +175,7 @@ describe("MCP milestone tools", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Unconfigured milestone task",
 					milestone: "Planned Later",
 				},
@@ -190,6 +197,7 @@ describe("MCP milestone tools", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Numeric alias create",
 					milestone: "1",
 				},
@@ -202,6 +210,7 @@ describe("MCP milestone tools", () => {
 			params: {
 				name: "task_edit",
 				arguments: {
+					actorId: "test-actor",
 					id: "task-1",
 					milestone: "0",
 				},
@@ -229,6 +238,7 @@ describe("MCP milestone tools", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Legacy alias task",
 					milestone: "1",
 				},
@@ -241,6 +251,7 @@ describe("MCP milestone tools", () => {
 			params: {
 				name: "task_edit",
 				arguments: {
+					actorId: "test-actor",
 					id: "task-1",
 					milestone: "m-1",
 				},
@@ -300,7 +311,7 @@ describe("MCP milestone tools", () => {
 		await server.testInterface.callTool({
 			params: {
 				name: "task_create",
-				arguments: { title: "Unconfigured milestone task", milestone: "Unconfigured" },
+				arguments: { actorId: "test-actor", title: "Unconfigured milestone task", milestone: "Unconfigured" },
 			},
 		});
 
@@ -321,7 +332,7 @@ describe("MCP milestone tools", () => {
 		await server.testInterface.callTool({
 			params: {
 				name: "task_create",
-				arguments: { title: "Archived milestone task", milestone: "Release 1.0" },
+				arguments: { actorId: "test-actor", title: "Archived milestone task", milestone: "Release 1.0" },
 			},
 		});
 
@@ -331,7 +342,7 @@ describe("MCP milestone tools", () => {
 		expect(getText(archived.content)).toContain('Archived milestone "Release 1.0"');
 
 		await server.testInterface.callTool({
-			params: { name: "task_edit", arguments: { id: "task-1", milestone: "Release 1.0" } },
+			params: { name: "task_edit", arguments: { actorId: "test-actor", id: "task-1", milestone: "Release 1.0" } },
 		});
 		const archivedTitleResolved = await server.getTask("task-1");
 		expect(archivedTitleResolved?.milestone).toBe("m-0");
@@ -376,10 +387,10 @@ describe("MCP milestone tools", () => {
 			params: { name: "milestone_add", arguments: { name: "Release 1.0" } },
 		});
 		await server.testInterface.callTool({
-			params: { name: "task_create", arguments: { title: "A", milestone: "Release 1.0" } },
+			params: { name: "task_create", arguments: { actorId: "test-actor", title: "A", milestone: "Release 1.0" } },
 		});
 		await server.testInterface.callTool({
-			params: { name: "task_create", arguments: { title: "B", milestone: "Release 1.0" } },
+			params: { name: "task_create", arguments: { actorId: "test-actor", title: "B", milestone: "Release 1.0" } },
 		});
 
 		const rename = await server.testInterface.callTool({
@@ -603,6 +614,7 @@ describe("MCP milestone tools", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Collision task",
 					milestone: "m-1",
 				},
@@ -618,7 +630,10 @@ describe("MCP milestone tools", () => {
 			params: { name: "milestone_add", arguments: { name: "Release 1.0" } },
 		});
 		await server.testInterface.callTool({
-			params: { name: "task_create", arguments: { title: "Legacy task", milestone: "Release 1.0" } },
+			params: {
+				name: "task_create",
+				arguments: { actorId: "test-actor", title: "Legacy task", milestone: "Release 1.0" },
+			},
 		});
 		await server.editTask("task-1", { milestone: "Release 1.0" });
 
@@ -679,10 +694,10 @@ describe("MCP milestone tools", () => {
 			params: { name: "milestone_add", arguments: { name: "Release B" } },
 		});
 		await server.testInterface.callTool({
-			params: { name: "task_create", arguments: { title: "Task A", milestone: "Release A" } },
+			params: { name: "task_create", arguments: { actorId: "test-actor", title: "Task A", milestone: "Release A" } },
 		});
 		await server.testInterface.callTool({
-			params: { name: "task_create", arguments: { title: "Task B", milestone: "Release B" } },
+			params: { name: "task_create", arguments: { actorId: "test-actor", title: "Task B", milestone: "Release B" } },
 		});
 
 		const renamed = await server.testInterface.callTool({
@@ -714,7 +729,7 @@ describe("MCP milestone tools", () => {
 			params: { name: "milestone_add", arguments: { name: "Release A" } },
 		});
 		await server.testInterface.callTool({
-			params: { name: "task_create", arguments: { title: "Task A", milestone: "Release A" } },
+			params: { name: "task_create", arguments: { actorId: "test-actor", title: "Task A", milestone: "Release A" } },
 		});
 		await server.editTask("task-1", { milestone: "Release A" });
 
@@ -731,7 +746,7 @@ describe("MCP milestone tools", () => {
 			params: { name: "milestone_add", arguments: { name: "Release A" } },
 		});
 		await server.testInterface.callTool({
-			params: { name: "task_create", arguments: { title: "Task A", milestone: "Release A" } },
+			params: { name: "task_create", arguments: { actorId: "test-actor", title: "Task A", milestone: "Release A" } },
 		});
 		await server.editTask("task-1", { milestone: "0" });
 
@@ -751,7 +766,7 @@ describe("MCP milestone tools", () => {
 			params: { name: "milestone_add", arguments: { name: "Keep ID occupied" } },
 		});
 		await server.testInterface.callTool({
-			params: { name: "task_create", arguments: { title: "Old task", milestone: "Shared" } },
+			params: { name: "task_create", arguments: { actorId: "test-actor", title: "Old task", milestone: "Shared" } },
 		});
 		await server.editTask("task-1", { milestone: "Shared" });
 		await server.testInterface.callTool({
@@ -761,7 +776,7 @@ describe("MCP milestone tools", () => {
 			params: { name: "milestone_add", arguments: { name: "Shared" } },
 		});
 		await server.testInterface.callTool({
-			params: { name: "task_create", arguments: { title: "New task", milestone: "Shared" } },
+			params: { name: "task_create", arguments: { actorId: "test-actor", title: "New task", milestone: "Shared" } },
 		});
 
 		const removeById = await server.testInterface.callTool({
@@ -781,7 +796,10 @@ describe("MCP milestone tools", () => {
 			params: { name: "milestone_add", arguments: { name: "Archived source" } },
 		});
 		await server.testInterface.callTool({
-			params: { name: "task_create", arguments: { title: "Archived task", milestone: "Archived source" } },
+			params: {
+				name: "task_create",
+				arguments: { actorId: "test-actor", title: "Archived task", milestone: "Archived source" },
+			},
 		});
 		await server.testInterface.callTool({
 			params: { name: "milestone_archive", arguments: { name: "Archived source" } },
@@ -793,7 +811,10 @@ describe("MCP milestone tools", () => {
 			params: { name: "milestone_add", arguments: { name: "m-0" } },
 		});
 		await server.testInterface.callTool({
-			params: { name: "task_create", arguments: { title: "Active title task", milestone: "m-2" } },
+			params: {
+				name: "task_create",
+				arguments: { actorId: "test-actor", title: "Active title task", milestone: "m-2" },
+			},
 		});
 		await server.editTask("task-1", { milestone: "0" });
 
@@ -813,7 +834,10 @@ describe("MCP milestone tools", () => {
 			params: { name: "milestone_add", arguments: { name: "Archived source" } },
 		});
 		await server.testInterface.callTool({
-			params: { name: "task_create", arguments: { title: "Archived task", milestone: "Archived source" } },
+			params: {
+				name: "task_create",
+				arguments: { actorId: "test-actor", title: "Archived task", milestone: "Archived source" },
+			},
 		});
 		await server.testInterface.callTool({
 			params: { name: "milestone_archive", arguments: { name: "Archived source" } },
@@ -825,7 +849,10 @@ describe("MCP milestone tools", () => {
 			params: { name: "milestone_add", arguments: { name: "m-0" } },
 		});
 		await server.testInterface.callTool({
-			params: { name: "task_create", arguments: { title: "Active title task", milestone: "m-2" } },
+			params: {
+				name: "task_create",
+				arguments: { actorId: "test-actor", title: "Active title task", milestone: "m-2" },
+			},
 		});
 		await server.editTask("task-1", { milestone: "0" });
 
@@ -848,6 +875,7 @@ describe("MCP milestone tools", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Alias tie-break task",
 					milestone: "1",
 				},
@@ -867,7 +895,10 @@ describe("MCP milestone tools", () => {
 			params: { name: "milestone_add", arguments: { name: "Archived source" } },
 		});
 		await server.testInterface.callTool({
-			params: { name: "task_create", arguments: { title: "Task", milestone: "Archived source" } },
+			params: {
+				name: "task_create",
+				arguments: { actorId: "test-actor", title: "Task", milestone: "Archived source" },
+			},
 		});
 		await server.testInterface.callTool({
 			params: { name: "milestone_archive", arguments: { name: "Archived source" } },
@@ -880,7 +911,7 @@ describe("MCP milestone tools", () => {
 		});
 
 		await server.testInterface.callTool({
-			params: { name: "task_edit", arguments: { id: "task-1", milestone: "m-0" } },
+			params: { name: "task_edit", arguments: { actorId: "test-actor", id: "task-1", milestone: "m-0" } },
 		});
 		const updated = await server.getTask("task-1");
 		expect(updated?.milestone).toBe("m-0");
@@ -891,7 +922,10 @@ describe("MCP milestone tools", () => {
 			params: { name: "milestone_add", arguments: { name: "Archived source" } },
 		});
 		await server.testInterface.callTool({
-			params: { name: "task_create", arguments: { title: "Task", milestone: "Archived source" } },
+			params: {
+				name: "task_create",
+				arguments: { actorId: "test-actor", title: "Task", milestone: "Archived source" },
+			},
 		});
 		await server.testInterface.callTool({
 			params: { name: "milestone_archive", arguments: { name: "Archived source" } },
@@ -916,7 +950,10 @@ describe("MCP milestone tools", () => {
 		await writeLegacyMilestoneFile(server, "m-0", "Shared");
 		await writeLegacyMilestoneFile(server, "m-1", "Shared");
 		await server.testInterface.callTool({
-			params: { name: "task_create", arguments: { title: "Ambiguous title task", milestone: "Shared" } },
+			params: {
+				name: "task_create",
+				arguments: { actorId: "test-actor", title: "Ambiguous title task", milestone: "Shared" },
+			},
 		});
 
 		const listed = await server.testInterface.callTool({
@@ -955,7 +992,10 @@ Milestone: Legacy frontmatter ID
 			params: { name: "milestone_add", arguments: { name: "Keep ID occupied" } },
 		});
 		await server.testInterface.callTool({
-			params: { name: "task_create", arguments: { title: "Archived task", milestone: "Shared" } },
+			params: {
+				name: "task_create",
+				arguments: { actorId: "test-actor", title: "Archived task", milestone: "Shared" },
+			},
 		});
 		await server.testInterface.callTool({
 			params: { name: "milestone_archive", arguments: { name: "Shared" } },
@@ -965,7 +1005,7 @@ Milestone: Legacy frontmatter ID
 		});
 
 		await server.testInterface.callTool({
-			params: { name: "task_create", arguments: { title: "Active task", milestone: "Shared" } },
+			params: { name: "task_create", arguments: { actorId: "test-actor", title: "Active task", milestone: "Shared" } },
 		});
 		const activeTaskBeforeRemove = await server.getTask("task-2");
 		expect(activeTaskBeforeRemove?.milestone).toBe("m-2");
@@ -988,7 +1028,7 @@ Milestone: Legacy frontmatter ID
 			params: { name: "milestone_add", arguments: { name: "Release B" } },
 		});
 		await server.testInterface.callTool({
-			params: { name: "task_create", arguments: { title: "A", milestone: "Release A" } },
+			params: { name: "task_create", arguments: { actorId: "test-actor", title: "A", milestone: "Release A" } },
 		});
 
 		const reassign = await server.testInterface.callTool({
@@ -1005,7 +1045,7 @@ Milestone: Legacy frontmatter ID
 
 		// Now test clear behavior
 		await server.testInterface.callTool({
-			params: { name: "task_edit", arguments: { id: "task-1", milestone: "Release B" } },
+			params: { name: "task_edit", arguments: { actorId: "test-actor", id: "task-1", milestone: "Release B" } },
 		});
 
 		const clear = await server.testInterface.callTool({
@@ -1023,7 +1063,7 @@ Milestone: Legacy frontmatter ID
 			params: { name: "milestone_add", arguments: { name: "Keep Value" } },
 		});
 		await server.testInterface.callTool({
-			params: { name: "task_create", arguments: { title: "Task", milestone: "Keep Value" } },
+			params: { name: "task_create", arguments: { actorId: "test-actor", title: "Task", milestone: "Keep Value" } },
 		});
 
 		const removeKeep = await server.testInterface.callTool({

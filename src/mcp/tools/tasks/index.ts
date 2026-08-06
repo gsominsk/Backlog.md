@@ -10,7 +10,14 @@ import {
 import { createSimpleValidatedTool } from "../../validation/tool-wrapper.ts";
 import type { TaskCreateArgs, TaskEditRequest, TaskListArgs, TaskSearchArgs } from "./handlers.ts";
 import { TaskHandlers } from "./handlers.ts";
-import { taskArchiveSchema, taskCompleteSchema, taskViewSchema } from "./schemas.ts";
+import {
+	taskActivityGetSchema,
+	taskArchiveSchema,
+	taskClaimSchema,
+	taskCompleteSchema,
+	taskReleaseSchema,
+	taskViewSchema,
+} from "./schemas.ts";
 
 export function registerTaskTools(server: McpServer, config: BacklogConfig): void {
 	const handlers = new TaskHandlers(server);
@@ -85,7 +92,7 @@ export function registerTaskTools(server: McpServer, config: BacklogConfig): voi
 			annotations: { title: "Archive Task", destructiveHint: true },
 		},
 		taskArchiveSchema,
-		async (input) => handlers.archiveTask(input as { id: string }),
+		async (input) => handlers.archiveTask(input as { id: string; actorId?: string; actorKind?: string }),
 	);
 
 	const completeTaskTool: McpToolHandler = createSimpleValidatedTool(
@@ -96,7 +103,7 @@ export function registerTaskTools(server: McpServer, config: BacklogConfig): voi
 			annotations: { title: "Complete Task", destructiveHint: true },
 		},
 		taskCompleteSchema,
-		async (input) => handlers.completeTask(input as { id: string }),
+		async (input) => handlers.completeTask(input as { id: string; actorId?: string; actorKind?: string }),
 	);
 
 	server.addTool(createTaskTool);
@@ -106,7 +113,58 @@ export function registerTaskTools(server: McpServer, config: BacklogConfig): voi
 	server.addTool(viewTaskTool);
 	server.addTool(archiveTaskTool);
 	server.addTool(completeTaskTool);
+
+	// HYBRID-BOARD: ActivityLog — task_activity_get (spec §5.6)
+	const activityGetTool: McpToolHandler = createSimpleValidatedTool(
+		{
+			name: "task_activity_get",
+			description:
+				"Retrieve the activity log for a Backlog.md task (audit trail of status changes, comments, claims, releases)",
+			inputSchema: taskActivityGetSchema,
+			annotations: { title: "Get Task Activity", readOnlyHint: true, destructiveHint: false },
+		},
+		taskActivityGetSchema,
+		async (input) => handlers.getActivity(input as { id: string; limit?: number; offset?: number }),
+	);
+	server.addTool(activityGetTool);
+
+	// HYBRID-BOARD: Claim ownership — task_claim (spec §6.5)
+	const claimTool: McpToolHandler = createSimpleValidatedTool(
+		{
+			name: "task_claim",
+			description:
+				"Claim a task for an agent (ownership lock with TTL). Three-way logic: no claim → set, same actor → renew, different actor → deny. Auto-renews on any tool call from same actor.",
+			inputSchema: taskClaimSchema,
+			annotations: { title: "Claim Task", destructiveHint: false },
+		},
+		taskClaimSchema,
+		async (input) =>
+			handlers.claimTask(input as { id: string; actorId: string; actorKind?: string; ttlSeconds?: number }),
+	);
+	server.addTool(claimTool);
+
+	// HYBRID-BOARD: Claim ownership — task_release (spec §6.5)
+	const releaseTool: McpToolHandler = createSimpleValidatedTool(
+		{
+			name: "task_release",
+			description: "Release a task claim. Only the current claim holder can release. Used for handoffs between agents.",
+			inputSchema: taskReleaseSchema,
+			annotations: { title: "Release Task Claim", destructiveHint: false },
+		},
+		taskReleaseSchema,
+		async (input) => handlers.releaseTask(input as { id: string; actorId: string }),
+	);
+	server.addTool(releaseTool);
 }
 
 export type { TaskCreateArgs, TaskEditArgs, TaskListArgs, TaskSearchArgs } from "./handlers.ts";
-export { taskArchiveSchema, taskCompleteSchema, taskListSchema, taskSearchSchema, taskViewSchema } from "./schemas.ts";
+export {
+	taskActivityGetSchema,
+	taskArchiveSchema,
+	taskClaimSchema,
+	taskCompleteSchema,
+	taskListSchema,
+	taskReleaseSchema,
+	taskSearchSchema,
+	taskViewSchema,
+} from "./schemas.ts";

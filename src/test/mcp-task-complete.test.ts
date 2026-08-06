@@ -51,6 +51,7 @@ describe("MCP task_complete", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Done task",
 					status: "Done",
 				},
@@ -60,7 +61,7 @@ describe("MCP task_complete", () => {
 		const archiveAttempt = await server.testInterface.callTool({
 			params: {
 				name: "task_archive",
-				arguments: { id: "task-1" },
+				arguments: { actorId: "test-actor", id: "task-1" },
 			},
 		});
 		expect(archiveAttempt.isError).toBe(true);
@@ -69,7 +70,7 @@ describe("MCP task_complete", () => {
 		const complete = await server.testInterface.callTool({
 			params: {
 				name: "task_complete",
-				arguments: { id: "task-1" },
+				arguments: { actorId: "test-actor", id: "task-1" },
 			},
 		});
 		expect(complete.isError).toBeUndefined();
@@ -102,7 +103,7 @@ describe("MCP task_complete", () => {
 		const complete = await server.testInterface.callTool({
 			params: {
 				name: "task_complete",
-				arguments: { id: "task-1" },
+				arguments: { actorId: "test-actor", id: "task-1" },
 			},
 		});
 		expect(complete.isError).toBe(true);
@@ -114,7 +115,7 @@ describe("MCP task_complete", () => {
 		const archive = await server.testInterface.callTool({
 			params: {
 				name: "task_archive",
-				arguments: { id: "task-1" },
+				arguments: { actorId: "test-actor", id: "task-1" },
 			},
 		});
 		expect(archive.isError).toBeUndefined();

@@ -222,5 +222,17 @@ export function buildTaskUpdateInput(args: TaskEditArgs): TaskUpdateInput {
 		updateInput.uncheckDefinitionOfDone = [...args.definitionOfDoneUncheck];
 	}
 
+	// HYBRID-BOARD: ActorClaim — wire actorId/actorKind (spec §7.1)
+	if (typeof args.actorId === "string" && args.actorId.trim().length > 0) {
+		updateInput.actorId = args.actorId.trim();
+	}
+	if (typeof args.actorKind === "string" && args.actorKind.trim().length > 0) {
+		updateInput.actorKind = args.actorKind.trim();
+	}
+	// doc-8: wire traceId for cross-source log correlation
+	if (typeof args.traceId === "string" && args.traceId.trim().length > 0) {
+		updateInput.traceId = args.traceId.trim();
+	}
+
 	return updateInput;
 }

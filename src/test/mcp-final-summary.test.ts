@@ -51,6 +51,7 @@ describe("MCP final summary", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Summarized task",
 					finalSummary: "PR-style summary",
 				},
@@ -80,14 +81,14 @@ describe("MCP final summary", () => {
 		await mcpServer.testInterface.callTool({
 			params: {
 				name: "task_create",
-				arguments: { title: "Editable" },
+				arguments: { actorId: "test-actor", title: "Editable" },
 			},
 		});
 
 		await mcpServer.testInterface.callTool({
 			params: {
 				name: "task_edit",
-				arguments: { id: "task-1", finalSummary: "Initial" },
+				arguments: { actorId: "test-actor", id: "task-1", finalSummary: "Initial" },
 			},
 		});
 
@@ -97,7 +98,7 @@ describe("MCP final summary", () => {
 		await mcpServer.testInterface.callTool({
 			params: {
 				name: "task_edit",
-				arguments: { id: "task-1", finalSummaryAppend: ["Second", "Third"] },
+				arguments: { actorId: "test-actor", id: "task-1", finalSummaryAppend: ["Second", "Third"] },
 			},
 		});
 
@@ -107,7 +108,7 @@ describe("MCP final summary", () => {
 		await mcpServer.testInterface.callTool({
 			params: {
 				name: "task_edit",
-				arguments: { id: "task-1", finalSummaryClear: true },
+				arguments: { actorId: "test-actor", id: "task-1", finalSummaryClear: true },
 			},
 		});
 

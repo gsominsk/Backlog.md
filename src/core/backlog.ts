@@ -1,6 +1,10 @@
 import { rename as moveFile, stat, unlink } from "node:fs/promises";
 import { basename, isAbsolute, join, relative } from "node:path";
 import { DEFAULT_DIRECTORIES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
+import { createActivityEntry } from "../domain/activity_entry.ts";
+import { deriveTrigger } from "../domain/trigger-derivation.ts";
+// HYBRID-BOARD: ActivityLog (spec §5)
+import { appendActivity } from "../file-system/activity-log.ts";
 import { FileSystem, isCreateLockError } from "../file-system/operations.ts";
 import { GitOperations } from "../git/operations.ts";
 import {
@@ -1356,6 +1360,9 @@ export class Core {
 				modifiedFiles: normalizedModifiedFiles,
 				rawContent: input.rawContent ?? "",
 				createdDate,
+				// HYBRID-BOARD: ActorClaim — persist actor identity (spec §7.1)
+				...(input.actorId && { createdById: input.actorId, updatedById: input.actorId }),
+				...(input.actorKind && { createdByKind: input.actorKind, updatedByKind: input.actorKind }),
 				...(parentTaskId && { parentTaskId }),
 				...(priority && { priority }),
 				...(type && { type }),
@@ -1377,7 +1384,27 @@ export class Core {
 		});
 
 		const savedTask = await this.finalizeCreatedTask(task, filePath, isDraft, autoCommit);
-		return { task: savedTask ?? task, filePath };
+		const finalTask = savedTask ?? task;
+
+		// HYBRID-BOARD: ActivityLog — log task creation (spec §5.4, best-effort)
+		// Only when actorId is present — CLI calls don't have actorId, so no activity file
+		if (input.actorId) {
+			const backlogDir = join(this.fs.rootDir, this.fs.backlogDirName);
+			await appendActivity(
+				backlogDir,
+				finalTask.id,
+				createActivityEntry({
+					actorId: input.actorId,
+					action: "create",
+					trigger: "start",
+					traceId: input.traceId,
+				}),
+			).catch(() => {
+				// Best-effort — don't fail the task creation
+			});
+		}
+
+		return { task: finalTask, filePath };
 	}
 
 	private async resolveParentTaskIdForCreate(parentTaskId: string): Promise<string> {
@@ -1477,6 +1504,9 @@ export class Core {
 		applyStringField(input.description, task.description, (next) => {
 			task.description = next;
 		});
+
+		// HYBRID-BOARD: ActivityLog — track status change for activity entry
+		const oldStatus = task.status;
 
 		if (input.status !== undefined) {
 			const canonicalStatus = await statusResolver(input.status);
@@ -2008,6 +2038,63 @@ export class Core {
 		}
 
 		task.definitionOfDoneItems = definitionOfDone;
+
+		// HYBRID-BOARD: ActorClaim — persist updated_by identity (spec §7.1)
+		if (input.actorId) {
+			task.updatedById = input.actorId;
+			mutated = true;
+		}
+		if (input.actorKind) {
+			task.updatedByKind = input.actorKind;
+			mutated = true;
+		}
+
+		// HYBRID-BOARD: ActivityLog — log status change + comment (spec §5.4, best-effort)
+		// Only when actorId is present — CLI calls don't have actorId, so no activity file
+		if (mutated && input.actorId) {
+			const backlogDir = join(this.fs.rootDir, this.fs.backlogDirName);
+			const newStatus = task.status;
+
+			if (oldStatus !== newStatus) {
+				const config = await this.fs.loadConfig();
+				const trigger = deriveTrigger(oldStatus ?? null, newStatus ?? null, {
+					statuses: config?.statuses ?? [...DEFAULT_STATUSES],
+				});
+				await appendActivity(
+					backlogDir,
+					task.id,
+					createActivityEntry({
+						actorId: input.actorId,
+						action: "status_change",
+						from: oldStatus ?? null,
+						to: newStatus ?? null,
+						trigger,
+						traceId: input.traceId,
+					}),
+				).catch(() => {
+					// Best-effort — don't fail the task update
+				});
+			}
+
+			if (input.appendComments && input.appendComments.length > 0) {
+				const lastComment = input.appendComments[input.appendComments.length - 1];
+				if (lastComment) {
+					const summary = typeof lastComment === "string" ? lastComment : lastComment.body;
+					await appendActivity(
+						backlogDir,
+						task.id,
+						createActivityEntry({
+							actorId: input.actorId,
+							action: "comment",
+							summary,
+							traceId: input.traceId,
+						}),
+					).catch(() => {
+						// Best-effort
+					});
+				}
+			}
+		}
 
 		return { task, mutated };
 	}

@@ -1,4 +1,9 @@
-import { handleBacklogToolError, McpValidationError } from "../errors/mcp-errors.ts";
+import {
+	buildTransportDroppedMessage,
+	handleBacklogToolError,
+	McpTransportDroppedError,
+	McpValidationError,
+} from "../errors/mcp-errors.ts";
 import type { CallToolResult, McpToolHandler } from "../types.ts";
 import type { JsonSchema, ValidationResult } from "./validators.ts";
 import { validateInput } from "./validators.ts";
@@ -26,6 +31,7 @@ export function createValidatedTool<T extends Record<string, unknown>>(
 	toolDefinition: Omit<McpToolHandler, "handler">,
 	validator: (input: unknown, context?: ValidationContext) => Promise<ValidationResult> | ValidationResult,
 	handler: ValidatedToolHandler<T>,
+	schema?: JsonSchema,
 ): McpToolHandler {
 	return {
 		...toolDefinition,
@@ -40,6 +46,13 @@ export function createValidatedTool<T extends Record<string, unknown>>(
 				const validationResult = await validator(request, context);
 
 				if (!validationResult.isValid) {
+					// Transport-dropped field detection: if a required transport-sensitive
+					// field is missing but other fields are present, the transport likely
+					// dropped it (not a user omission). Returns actionable error with options.
+					if (schema) {
+						const transportError = detectTransportDropped(toolDefinition.name, request, schema);
+						if (transportError) throw transportError;
+					}
 					throw new McpValidationError(
 						`Validation failed: ${validationResult.errors.join(", ")}`,
 						validationResult.errors,
@@ -152,7 +165,7 @@ export function createSimpleValidatedTool<T extends Record<string, unknown>>(
 	schema: JsonSchema,
 	handler: ValidatedToolHandler<T>,
 ): McpToolHandler {
-	return createValidatedTool(toolDefinition, createSchemaValidator(schema), handler);
+	return createValidatedTool(toolDefinition, createSchemaValidator(schema), handler, schema);
 }
 
 /**
@@ -164,5 +177,56 @@ export function createAsyncValidatedTool<T extends Record<string, unknown>>(
 	customValidator: (input: Record<string, unknown>, context?: ValidationContext) => Promise<string[]>,
 	handler: ValidatedToolHandler<T>,
 ): McpToolHandler {
-	return createValidatedTool(toolDefinition, createAsyncValidator(schema, customValidator), handler);
+	return createValidatedTool(toolDefinition, createAsyncValidator(schema, customValidator), handler, schema);
+}
+
+// ── Transport-dropped field detection ──────────────────────────────
+
+/**
+ * Threshold for transport-sensitive fields. String fields with no maxLength
+ * or maxLength above this value are considered transport-sensitive — MCP
+ * transport serialization drops large strings (>1KB) during subagent calls.
+ */
+const TRANSPORT_SENSITIVE_THRESHOLD = 1000;
+
+/**
+ * A field is transport-sensitive if it's a string with no maxLength or
+ * maxLength above the threshold. These fields can exceed the transport limit
+ * and be silently dropped. Derived from schema — no per-tool hardcodes.
+ */
+function isTransportSensitive(fieldSchema: JsonSchema | undefined): boolean {
+	if (!fieldSchema || fieldSchema.type !== "string") return false;
+	return !fieldSchema.maxLength || fieldSchema.maxLength > TRANSPORT_SENSITIVE_THRESHOLD;
+}
+
+/**
+ * Detects when a required transport-sensitive field was dropped by MCP transport.
+ * Heuristic: required transport-sensitive field is missing AND other fields are
+ * present in input → transport dropped it (not user omission).
+ *
+ * Returns McpTransportDroppedError with actionable message, or null if not a transport drop.
+ */
+function detectTransportDropped(
+	toolName: string,
+	input: Record<string, unknown>,
+	schema: JsonSchema,
+): McpTransportDroppedError | null {
+	if (!schema.required) return null;
+
+	// Fields actually received (non-null, non-undefined)
+	const receivedFields = Object.keys(input).filter((k) => input[k] !== undefined && input[k] !== null);
+	if (receivedFields.length === 0) return null;
+
+	// Find missing required transport-sensitive fields
+	const droppedFields = schema.required.filter((field) => {
+		const isMissing = !(field in input) || input[field] === undefined || input[field] === null;
+		return isMissing && isTransportSensitive(schema.properties?.[field]);
+	});
+
+	if (droppedFields.length === 0) return null;
+
+	return new McpTransportDroppedError(buildTransportDroppedMessage(toolName, droppedFields, receivedFields), {
+		fields: droppedFields,
+		receivedFields,
+	});
 }

@@ -223,8 +223,30 @@ export function generateTaskCreateSchema(config: BacklogConfig): JsonSchema {
 				maxLength: 50,
 				description: "Existing parent task ID for a subtask. Do not pass milestone IDs here; use milestone instead.",
 			},
+			// HYBRID-BOARD: ActorClaim — actor identity (spec §4.4, §7.1)
+			// REQUIRED: without actorId, no activity log entry is created and the
+			// action is invisible to task_activity_get. Schema enforces this so
+			// agents cannot forget — the MCP tool rejects the call if actorId is missing.
+			actorId: {
+				type: "string",
+				minLength: 1,
+				maxLength: 500,
+				description:
+					"REQUIRED. Agent identity (who is performing this action). Persisted as created_by_id. Without actorId, no activity log entry is created — the MCP tool rejects this call if actorId is missing.",
+			},
+			actorKind: {
+				type: "string",
+				enum: ["orchestrator", "subagent", "user", "external"],
+				description: "Optional actor kind for attribution. Persisted as created_by_kind.",
+			},
+			traceId: {
+				type: "string",
+				maxLength: 100,
+				description:
+					"Optional ZCode traceId for cross-source log correlation (doc-8). When provided, included in activity log entry.",
+			},
 		},
-		required: ["title"],
+		required: ["title", "actorId"],
 		additionalProperties: false,
 	};
 }
@@ -483,8 +505,30 @@ export function generateTaskEditSchema(config: BacklogConfig): JsonSchema {
 				maxItems: 50,
 				description: "Mark task-specific Definition of Done items as incomplete by 1-based index on this task.",
 			},
+			// HYBRID-BOARD: ActorClaim — actor identity (spec §4.4, §7.1)
+			// REQUIRED: without actorId, no activity log entry is created and the
+			// action is invisible to task_activity_get. Schema enforces this so
+			// agents cannot forget — the MCP tool rejects the call if actorId is missing.
+			actorId: {
+				type: "string",
+				minLength: 1,
+				maxLength: 500,
+				description:
+					"REQUIRED. Agent identity (who is performing this action). Persisted as updated_by_id. Without actorId, no activity log entry is created — the MCP tool rejects this call if actorId is missing.",
+			},
+			actorKind: {
+				type: "string",
+				enum: ["orchestrator", "subagent", "user", "external"],
+				description: "Optional actor kind for attribution. Persisted as updated_by_kind.",
+			},
+			traceId: {
+				type: "string",
+				maxLength: 100,
+				description:
+					"Optional ZCode traceId for cross-source log correlation (doc-8). When provided, included in activity log entry.",
+			},
 		},
-		required: ["id"],
+		required: ["id", "actorId"],
 		additionalProperties: false,
 	};
 }

@@ -57,6 +57,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Agent onboarding checklist",
 					description: "Steps to onboard a new AI agent",
 					labels: ["agents", "workflow"],
@@ -131,6 +132,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "First MCP ordinal task",
 				},
 			},
@@ -141,6 +143,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Second MCP ordinal task",
 				},
 			},
@@ -151,6 +154,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Explicit MCP ordinal task",
 					ordinal: 9000,
 				},
@@ -164,6 +168,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Button search",
 					modifiedFiles: ["src/web/components/Button.tsx"],
 				},
@@ -173,6 +178,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Server search",
 					modifiedFiles: ["src/server/index.ts"],
 				},
@@ -193,6 +199,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Commented MCP task",
 				},
 			},
@@ -202,6 +209,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_edit",
 				arguments: {
+					actorId: "test-actor",
 					id: "task-1",
 					title: "Commented MCP task renamed",
 					commentsAppend: ["MCP comment body"],
@@ -229,6 +237,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Invalid comment marker task",
 				},
 			},
@@ -238,6 +247,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_edit",
 				arguments: {
+					actorId: "test-actor",
 					id: "task-1",
 					commentsAppend: ["Invalid <!-- COMMENT:END --> marker"],
 				},
@@ -257,6 +267,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Milestone Task One",
 					status: "To Do",
 					milestone: "Release-1",
@@ -267,6 +278,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Milestone Task Two",
 					status: "In Progress",
 					milestone: "release-1",
@@ -277,6 +289,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Other Milestone Task",
 					status: "To Do",
 					milestone: "Release-2",
@@ -287,6 +300,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "No Milestone Task",
 					status: "To Do",
 				},
@@ -296,6 +310,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Roadmap Milestone Task",
 					status: "To Do",
 					milestone: "Roadmap Alpha",
@@ -343,6 +358,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Draft Milestone One",
 					status: "Draft",
 					milestone: "draft-alpha",
@@ -353,6 +369,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Draft Milestone Two",
 					status: "Draft",
 					milestone: "draft-beta",
@@ -373,6 +390,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Assigned Task",
 					assignee: ["alice"],
 				},
@@ -382,6 +400,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Unassigned Task",
 				},
 			},
@@ -406,6 +425,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Assigned Draft",
 					status: "Draft",
 					assignee: ["alice"],
@@ -416,6 +436,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Unassigned Draft",
 					status: "Draft",
 				},
@@ -435,6 +456,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Active task",
 				},
 			},
@@ -444,6 +466,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Completed task",
 					status: "Done",
 				},
@@ -454,6 +477,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_complete",
 				arguments: {
+					actorId: "test-actor",
 					id: "task-2",
 				},
 			},
@@ -463,6 +487,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Archived task",
 				},
 			},
@@ -472,6 +497,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_archive",
 				arguments: {
+					actorId: "test-actor",
 					id: "task-3",
 				},
 			},
@@ -545,6 +571,7 @@ describe("MCP task tools (MVP)", () => {
 				params: {
 					name: "task_create",
 					arguments: {
+						actorId: "test-actor",
 						title: "Custom priority MCP task",
 						priority: "VERY HIGH",
 					},
@@ -618,6 +645,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Status normalization",
 					status: "done",
 				},
@@ -634,6 +662,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_edit",
 				arguments: {
+					actorId: "test-actor",
 					id: "task-1",
 					status: "inprogress",
 				},
@@ -653,6 +682,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Refine MCP documentation",
 					status: "To Do",
 				},
@@ -666,6 +696,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Placeholder dependency",
 				},
 			},
@@ -677,6 +708,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_edit",
 				arguments: {
+					actorId: "test-actor",
 					id: "task-1",
 					status: "In Progress",
 					labels: ["docs"],
@@ -704,6 +736,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_edit",
 				arguments: {
+					actorId: "test-actor",
 					id: "task-1",
 					acceptanceCriteriaCheck: [1],
 					acceptanceCriteriaUncheck: [2],
@@ -721,6 +754,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Label blank input",
 					labels: ["docs", "workflow"],
 				},
@@ -731,6 +765,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_edit",
 				arguments: {
+					actorId: "test-actor",
 					id: "task-1",
 					labels: ["", "   "],
 				},
@@ -744,6 +779,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_edit",
 				arguments: {
+					actorId: "test-actor",
 					id: "task-1",
 					labels: [],
 				},
@@ -759,6 +795,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Ordinal task A",
 					status: "To Do",
 					priority: "low",
@@ -770,6 +807,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Ordinal task B",
 					status: "To Do",
 					priority: "high",
@@ -781,6 +819,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Ordinal task C",
 					status: "To Do",
 					priority: "medium",
@@ -802,6 +841,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_edit",
 				arguments: {
+					actorId: "test-actor",
 					id: "task-3",
 					ordinal: 5,
 				},
@@ -823,6 +863,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Limited ordinal later id",
 					status: "To Do",
 					ordinal: 2000,
@@ -833,6 +874,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Limited ordinal first by order",
 					status: "To Do",
 					ordinal: 1000,
@@ -861,6 +903,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Invalid ordinal create",
 					ordinal: -1,
 				},
@@ -873,6 +916,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Null ordinal create",
 					ordinal: null,
 				},
@@ -885,6 +929,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Valid task",
 				},
 			},
@@ -894,6 +939,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_edit",
 				arguments: {
+					actorId: "test-actor",
 					id: "task-1",
 					ordinal: -1,
 				},
@@ -906,6 +952,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_edit",
 				arguments: {
+					actorId: "test-actor",
 					id: "task-1",
 					ordinal: null,
 				},
@@ -924,6 +971,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "DoD MCP task",
 					definitionOfDoneAdd: ["Ship notes"],
 				},
@@ -940,6 +988,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "DoD no defaults",
 					disableDefinitionOfDoneDefaults: true,
 				},
@@ -954,6 +1003,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_edit",
 				arguments: {
+					actorId: "test-actor",
 					id: "task-1",
 					definitionOfDoneCheck: [2],
 				},
@@ -967,6 +1017,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_edit",
 				arguments: {
+					actorId: "test-actor",
 					id: "task-1",
 					definitionOfDoneRemove: [1],
 				},
@@ -980,6 +1031,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_edit",
 				arguments: {
+					actorId: "test-actor",
 					id: "task-1",
 					definitionOfDoneUncheck: [1],
 				},
@@ -995,6 +1047,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Parent task",
 				},
 			},
@@ -1004,6 +1057,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Child task A",
 					parentTaskId: "TASK-1",
 				},
@@ -1014,6 +1068,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Child task B",
 					parentTaskId: "TASK-1",
 				},
@@ -1024,6 +1079,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Standalone task",
 				},
 			},
@@ -1043,6 +1099,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_edit",
 				arguments: {
+					actorId: "test-actor",
 					id: "task-1.1",
 					title: "Child task A updated",
 				},
@@ -1070,6 +1127,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Typed task",
 					type: "BUG",
 					priority: "high",
@@ -1085,6 +1143,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Untyped task",
 				},
 			},
@@ -1101,6 +1160,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_edit",
 				arguments: {
+					actorId: "test-actor",
 					id: "task-1",
 					type: "Feature",
 				},
@@ -1122,6 +1182,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Invalid type task",
 					type: "banana",
 				},
@@ -1134,6 +1195,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Valid task",
 				},
 			},
@@ -1143,6 +1205,7 @@ describe("MCP task tools (MVP)", () => {
 			params: {
 				name: "task_edit",
 				arguments: {
+					actorId: "test-actor",
 					id: "task-1",
 					type: "banana",
 				},
@@ -1189,6 +1252,7 @@ describe("MCP task tools (MVP)", () => {
 				params: {
 					name: "task_create",
 					arguments: {
+						actorId: "test-actor",
 						title: "Configured type task",
 						type: "bug",
 					},
@@ -1200,6 +1264,7 @@ describe("MCP task tools (MVP)", () => {
 				params: {
 					name: "task_create",
 					arguments: {
+						actorId: "test-actor",
 						title: "Rejected type task",
 						type: "feature",
 					},

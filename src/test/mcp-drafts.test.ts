@@ -53,6 +53,7 @@ describe("MCP draft support via task tools", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Draft task",
 					status: "Draft",
 				},
@@ -92,6 +93,7 @@ describe("MCP draft support via task tools", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Promotion candidate",
 					status: "Draft",
 				},
@@ -102,6 +104,7 @@ describe("MCP draft support via task tools", () => {
 			params: {
 				name: "task_edit",
 				arguments: {
+					actorId: "test-actor",
 					id: "draft-1",
 					status: "To Do",
 					title: "Promoted task",
@@ -121,6 +124,7 @@ describe("MCP draft support via task tools", () => {
 			params: {
 				name: "task_edit",
 				arguments: {
+					actorId: "test-actor",
 					id: "task-1",
 					status: "Draft",
 					title: "Demoted draft",
@@ -146,6 +150,7 @@ describe("MCP draft support via task tools", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Archive this draft",
 					status: "Draft",
 				},
@@ -166,7 +171,7 @@ describe("MCP draft support via task tools", () => {
 		expect(searchText).toContain("DRAFT-1 - Archive this draft");
 
 		await mcpServer.testInterface.callTool({
-			params: { name: "task_archive", arguments: { id: "draft-1" } },
+			params: { name: "task_archive", arguments: { actorId: "test-actor", id: "draft-1" } },
 		});
 
 		const archivedDraft = await mcpServer.filesystem.loadDraft("draft-1");

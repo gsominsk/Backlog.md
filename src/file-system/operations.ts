@@ -1,5 +1,6 @@
-import { mkdir, rename, stat, unlink } from "node:fs/promises";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { createHash } from "node:crypto";
+import { mkdir, readFile, rename, stat, unlink } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import matter from "gray-matter";
 import lockfile from "proper-lockfile";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
@@ -14,6 +15,7 @@ import {
 } from "../utils/backlog-directory.ts";
 import { documentIdsEqual, normalizeDocumentId } from "../utils/document-id.ts";
 import { normalizeDocumentRelativePath, normalizeDocumentSubPath } from "../utils/document-path.ts";
+import { withMutex } from "../utils/mutex.ts";
 import {
 	buildGlobPattern,
 	extractAnyPrefix,
@@ -31,6 +33,7 @@ import {
 } from "../utils/task-path.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
 import { matchesTaskTypeFilter } from "../utils/task-type-config.ts";
+import { atomicWrite } from "./atomic-write.ts";
 
 // Interface for task path resolution context
 interface TaskPathContext {
@@ -54,6 +57,12 @@ interface CreateLockTarget {
 const DEFAULT_CREATE_LOCK_TIMEOUT_MS = 30_000;
 const DEFAULT_CREATE_LOCK_RETRY_DELAY_MS = 100;
 const DEFAULT_CREATE_LOCK_STALE_MS = 10_000;
+
+// HYBRID-BOARD: write-lock constants — do not reformat
+const DEFAULT_WRITE_LOCK_TIMEOUT_MS = 30_000;
+const DEFAULT_WRITE_LOCK_RETRY_DELAY_MS = 50;
+const DEFAULT_WRITE_LOCK_STALE_MS = 10_000;
+export const WRITE_LOCK_ERROR_CODE = "EWRITELOCK";
 
 export const CREATE_LOCK_ERROR_CODE = "ECREATELOCK";
 export const CREATE_LOCK_ERROR_MESSAGE =
@@ -385,8 +394,78 @@ export class FileSystem {
 		}
 	}
 
+	/**
+	 * Per-file write lock. Serializes operations that touch `targetPath`:
+	 * writes to different files run concurrently; writes to the same file
+	 * serialize across processes (proper-lockfile mkdir) AND within this
+	 * process (in-process mutex via withMutex).
+	 *
+	 * `fn` should call atomicWrite(targetPath, ...) (or perform the
+	 * read-modify-write it needs). Returns fn's result. Lock is always
+	 * released, on success or error.
+	 *
+	 * HYBRID-BOARD: withWriteLock — do not reformat
+	 */
+	async withWriteLock<T>(targetPath: string, fn: () => Promise<T>, options: CreateLockOptions = {}): Promise<T> {
+		const backlogDir = await this.getBacklogDir();
+		const lockTarget = await this.getCreateLockTarget(backlogDir);
+		const locksDir = lockTarget.locksDir;
+
+		// Per-file lock path — different files = independent locks
+		const hash = createHash("sha1").update(targetPath).digest("hex").slice(0, 16);
+		const safe = basename(targetPath)
+			.replace(/[^a-zA-Z0-9._-]/g, "_")
+			.slice(0, 48);
+		const lockFile = join(locksDir, "writes", `${safe}.${hash}.lock`);
+
+		const timeoutMs = options.timeoutMs ?? DEFAULT_WRITE_LOCK_TIMEOUT_MS;
+		const retryDelayMs = options.retryDelayMs ?? DEFAULT_WRITE_LOCK_RETRY_DELAY_MS;
+		const staleMs = Math.max(options.staleMs ?? DEFAULT_WRITE_LOCK_STALE_MS, 2_000);
+		const retries = Math.max(Math.ceil(timeoutMs / retryDelayMs) - 1, 0);
+
+		// In-process mutex first: cheap, fast, no syscall. Guards against
+		// multiple FileSystem instances / async interleavings in the same Bun process.
+		return withMutex(lockFile, async () => {
+			// Cross-process: mkdir-based lock, NFS-safe, stale-recoverable.
+			await mkdir(join(locksDir, "writes"), { recursive: true });
+
+			let release: (() => Promise<void>) | undefined;
+			try {
+				release = await lockfile.lock(targetPath, {
+					lockfilePath: lockFile,
+					realpath: false, // HYBRID-BOARD: file may not exist yet on first create
+					stale: staleMs,
+					retries: { retries, factor: 1, minTimeout: retryDelayMs, maxTimeout: retryDelayMs, randomize: false },
+				});
+			} catch (error) {
+				const code = (error as NodeJS.ErrnoException | undefined)?.code;
+				const msg = code === "ELOCKED" ? `File is locked: ${targetPath}` : `Write lock failed: ${targetPath}`;
+				const wrapped = new Error(msg, { cause: error }) as Error & { code?: string };
+				wrapped.name = "WriteLockError";
+				wrapped.code = WRITE_LOCK_ERROR_CODE;
+				throw wrapped;
+			}
+
+			try {
+				return await fn();
+			} finally {
+				try {
+					await release?.();
+				} catch {
+					// Don't mask the operation result
+				}
+			}
+		});
+	}
+
 	// Task operations
-	async saveTask(task: Task): Promise<string> {
+
+	/**
+	 * Internal task save — does NOT lock. Called from inside withWriteLock by
+	 * claimTask, releaseTask, and other tools that already hold the lock.
+	 * HYBRID-BOARD: saveTaskUnlocked — do not reformat
+	 */
+	async saveTaskUnlocked(task: Task): Promise<string> {
 		// Extract prefix from task ID, or use configured prefix, or fall back to default "task"
 		let prefix = extractAnyPrefix(task.id);
 		if (!prefix) {
@@ -440,8 +519,54 @@ export class FileSystem {
 		}
 
 		await this.ensureDirectoryExists(dirname(filepath));
-		await Bun.write(filepath, content);
+		await atomicWrite(filepath, content);
 		return filepath;
+	}
+
+	/**
+	 * Public task save — uses in-process mutex (fast, no syscall) for same-process
+	 * serialization. Cross-process lock is NOT needed here: atomicWrite is already
+	 * crash-safe (temp+rename), and withCreateLock handles ID generation.
+	 * Cross-process withWriteLock is reserved for claim_task/release_task where
+	 * read-modify-write atomicity matters across processes.
+	 *
+	 * HYBRID-BOARD: saveTask (in-process locked) — do not reformat
+	 */
+	async saveTask(task: Task): Promise<string> {
+		// Derive the filepath first (without writing) so we know what to lock.
+		let prefix = extractAnyPrefix(task.id);
+		if (!prefix) {
+			const config = await this.loadConfig();
+			prefix = config?.prefixes?.task ?? "task";
+		}
+		const taskId = normalizeId(task.id, prefix);
+		const filename = `${idForFilename(taskId)} - ${this.sanitizeFilename(task.title)}.md`;
+		const tasksDir = await this.getTasksDir();
+		const shouldPreservePath = typeof task.filePath === "string" && task.filePath.trim().length > 0;
+		const filepath = shouldPreservePath ? (task.filePath as string) : join(tasksDir, filename);
+
+		// In-process mutex only — fast, no mkdir/lockfile overhead.
+		// atomicWrite handles crash-safety; withCreateLock handles ID generation.
+		return withMutex(filepath, () => this.saveTaskUnlocked(task));
+	}
+
+	/**
+	 * HYBRID-BOARD: Read task from disk bypassing Bun.file cache.
+	 * Used inside withWriteLock where we need the freshest content after
+	 * atomicWrite (rename). Bun.file may return cached content.
+	 */
+	async readTaskFresh(taskId: string): Promise<Task | null> {
+		const tasksDir = await this.getTasksDir();
+		const core = { filesystem: { tasksDir } };
+		const filepath = await getTaskPath(taskId, core as TaskPathContext);
+		if (!filepath) return null;
+		try {
+			const content = await readFile(filepath, "utf-8");
+			const task = normalizeTaskIdentity(parseTask(content));
+			return { ...task, filePath: filepath };
+		} catch {
+			return null;
+		}
 	}
 
 	async loadTask(taskId: string): Promise<Task | null> {
@@ -676,7 +801,7 @@ export class FileSystem {
 
 			const content = await Bun.file(sourcePath).text();
 			await this.ensureDirectoryExists(dirname(targetPath));
-			await Bun.write(targetPath, content);
+			await atomicWrite(targetPath, content);
 
 			await unlink(sourcePath);
 
@@ -797,7 +922,7 @@ export class FileSystem {
 		}
 
 		await this.ensureDirectoryExists(dirname(filepath));
-		await Bun.write(filepath, content);
+		await atomicWrite(filepath, content);
 		return filepath;
 	}
 
@@ -868,7 +993,7 @@ export class FileSystem {
 		}
 
 		await this.ensureDirectoryExists(dirname(filepath));
-		await Bun.write(filepath, content);
+		await atomicWrite(filepath, content);
 	}
 
 	async loadDecision(decisionId: string): Promise<Decision | null> {
@@ -946,7 +1071,7 @@ export class FileSystem {
 			}
 		}
 
-		await Bun.write(filepath, content);
+		await atomicWrite(filepath, content);
 
 		document.path = relativePath;
 		return relativePath;
@@ -1277,7 +1402,7 @@ ${description || `Milestone: ${title}`}`,
 			);
 
 			const filepath = join(milestonesDir, filename);
-			await Bun.write(filepath, content);
+			await atomicWrite(filepath, content);
 
 			return {
 				id,
@@ -1334,7 +1459,7 @@ ${description || `Milestone: ${title}`}`,
 				await rename(sourcePath, targetPath);
 				movedFile = true;
 			}
-			await Bun.write(targetPath, updatedContent);
+			await atomicWrite(targetPath, updatedContent);
 
 			return {
 				success: true,
@@ -1348,12 +1473,12 @@ ${description || `Milestone: ${title}`}`,
 				if (movedFile && sourcePath && targetPath && sourcePath !== targetPath) {
 					await rename(targetPath, sourcePath);
 					if (originalContent) {
-						await Bun.write(sourcePath, originalContent);
+						await atomicWrite(sourcePath, originalContent);
 					}
 				} else if (originalContent) {
 					const restorePath = sourcePath ?? targetPath;
 					if (restorePath) {
-						await Bun.write(restorePath, originalContent);
+						await atomicWrite(restorePath, originalContent);
 					}
 				}
 			} catch {
@@ -1437,7 +1562,7 @@ ${description || `Milestone: ${title}`}`,
 		}
 		const configPath = this.resolvedConfigPath;
 		const content = this.serializeConfig(normalizedConfig);
-		await Bun.write(configPath, content);
+		await atomicWrite(configPath, content);
 		this.cachedConfig = normalizedConfig;
 		this.cachedConfigSnapshot = { path: configPath, content };
 	}

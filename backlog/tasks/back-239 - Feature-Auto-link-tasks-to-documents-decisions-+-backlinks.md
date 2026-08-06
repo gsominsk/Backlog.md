@@ -1,17 +1,18 @@
 ---
 id: BACK-239
 title: 'Feature: Auto-link tasks to documents/decisions + backlinks'
-status: To Do
+status: In Progress
 assignee:
   - '@codex'
 created_date: '2025-08-17 16:54'
+updated_date: '2026-07-16 12:12'
 labels:
   - web
   - enhancement
   - docs
 dependencies: []
 priority: medium
-ordinal: 6000
+ordinal: 174000
 ---
 
 ## Description

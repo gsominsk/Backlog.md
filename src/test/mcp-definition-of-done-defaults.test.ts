@@ -91,6 +91,7 @@ describe("MCP Definition of Done default tools", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Task with defaults",
 				},
 			},
@@ -113,6 +114,7 @@ describe("MCP Definition of Done default tools", () => {
 			params: {
 				name: "task_create",
 				arguments: {
+					actorId: "test-actor",
 					title: "Task without defaults",
 					disableDefinitionOfDoneDefaults: true,
 					definitionOfDoneAdd: ["Custom per-task DoD"],
