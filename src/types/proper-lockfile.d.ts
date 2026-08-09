@@ -13,6 +13,7 @@ declare module "proper-lockfile" {
 		realpath?: boolean;
 		retries?: number | RetryOptions;
 		lockfilePath?: string;
+		onCompromised?: (err: Error) => void;
 	}
 
 	type ReleaseFn = () => Promise<void>;

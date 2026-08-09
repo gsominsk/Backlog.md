@@ -1065,12 +1065,17 @@ export class Core {
 	 * - Document: /documents only
 	 * - Decision: /decisions only
 	 */
-	async generateNextId(type: EntityType = EntityType.Task, parent?: string): Promise<string> {
+	// HYBRID-BOARD: generateNextId with optional prefetchedIds (TASK-97.4).
+	// When prefetchedIds is provided (in-lock fast path), allIds = prefetched ∪ local-only.
+	// When omitted (legacy callers), allIds = getExistingIdsForType (full, with network).
+	async generateNextId(type: EntityType = EntityType.Task, parent?: string, prefetchedIds?: string[]): Promise<string> {
 		const config = await this.fs.loadConfig();
 		const prefix = getPrefixForType(type, config ?? undefined);
 
-		// Collect existing IDs based on entity type
-		const allIds = await this.getExistingIdsForType(type);
+		// Collect existing IDs: union of prefetched (with network, outside lock) + local-only (fresh, in-lock)
+		const allIds = prefetchedIds
+			? [...prefetchedIds, ...(await this.getLocalExistingIdsForType(type))]
+			: await this.getExistingIdsForType(type);
 
 		if (parent) {
 			// Subtask generation (only applicable for tasks)
@@ -1079,6 +1084,31 @@ export class Core {
 		}
 
 		return generateNextPrefixedId(allIds, prefix, config?.zeroPaddedIds);
+	}
+
+	// HYBRID-BOARD: getLocalExistingIdsForType — local-FS-only ID collection (TASK-97.4).
+	// Task → getLocalActiveAndCompletedTaskIds (no fetch, no branch scan).
+	// Other types delegate to existing list* calls (already local-only).
+	private async getLocalExistingIdsForType(type: EntityType): Promise<string[]> {
+		switch (type) {
+			case EntityType.Task: {
+				return this.getLocalActiveAndCompletedTaskIds();
+			}
+			case EntityType.Draft: {
+				const drafts = await this.fs.listDrafts();
+				return drafts.map((d) => d.id);
+			}
+			case EntityType.Document: {
+				const documents = await this.fs.listDocuments();
+				return documents.map((d) => d.id);
+			}
+			case EntityType.Decision: {
+				const decisions = await this.fs.listDecisions();
+				return decisions.map((d) => d.id);
+			}
+			default:
+				return [];
+		}
 	}
 
 	/**
@@ -1149,18 +1179,14 @@ export class Core {
 		return entries;
 	}
 
-	private async getActiveAndCompletedTaskIds(): Promise<string[]> {
-		const config = await this.fs.loadConfig();
-		const taskPrefix = config?.prefixes?.task ?? "task";
-
-		// Load local active and completed tasks
+	// HYBRID-BOARD: collectLocalTaskStateEntries — shared local-collection body.
+	// Extracted from getActiveAndCompletedTaskIds (TASK-97.4) to avoid duplication
+	// between the full (with network) and local-only (in-lock) variants.
+	private async collectLocalTaskStateEntries(taskPrefix: string): Promise<BranchTaskStateEntry[]> {
 		const localTasks = await this.listTasksWithMetadata();
 		const localCompletedTasks = await this.fs.listCompletedTasks();
-
-		// Build initial state entries from local tasks
 		const stateEntries: BranchTaskStateEntry[] = [];
 
-		// Add local active tasks to state
 		for (const task of localTasks) {
 			if (!task.id) continue;
 			const lastModified = task.lastModified ?? (task.updatedDate ? new Date(task.updatedDate) : new Date(0));
@@ -1173,7 +1199,6 @@ export class Core {
 			});
 		}
 
-		// Add local completed tasks to state
 		for (const task of localCompletedTasks) {
 			if (!task.id) continue;
 			const lastModified = task.updatedDate ? new Date(task.updatedDate) : new Date(0);
@@ -1186,14 +1211,20 @@ export class Core {
 			});
 		}
 
-		// Same-repository worktrees share the task ID namespace even before their
-		// task files are committed, so include their filesystem state for allocation.
 		stateEntries.push(...(await this.loadWorktreeTaskStateEntries(taskPrefix)));
+		return stateEntries;
+	}
+
+	private async getActiveAndCompletedTaskIds(): Promise<string[]> {
+		const config = await this.fs.loadConfig();
+		const taskPrefix = config?.prefixes?.task ?? "task";
+		const stateEntries = await this.collectLocalTaskStateEntries(taskPrefix);
 
 		// If cross-branch checking is enabled, scan other branches for task states
 		if (config?.checkActiveBranches !== false) {
 			const branchStateEntries: BranchTaskStateEntry[] = [];
 			const backlogDir = await this.getBacklogDirectoryName();
+			const localTasks = await this.listTasksWithMetadata();
 
 			// Load states from remote and local branches in parallel
 			await Promise.all([
@@ -1206,6 +1237,17 @@ export class Core {
 		}
 
 		// Build the latest state map and extract active + completed IDs
+		const latestState = buildLatestStateMap(stateEntries, []);
+		return getActiveAndCompletedIdsFromStateMap(latestState);
+	}
+
+	// HYBRID-BOARD: getLocalActiveAndCompletedTaskIds — cheap, local-FS-only (TASK-97.4).
+	// Safe to call INSIDE the create-lock. Does NOT call loadRemoteTasks (no gitOps.fetch)
+	// or loadLocalBranchTasks. Used by generateNextIdWithRevalidation for in-lock re-validation.
+	private async getLocalActiveAndCompletedTaskIds(): Promise<string[]> {
+		const config = await this.fs.loadConfig();
+		const taskPrefix = config?.prefixes?.task ?? "task";
+		const stateEntries = await this.collectLocalTaskStateEntries(taskPrefix);
 		const latestState = buildLatestStateMap(stateEntries, []);
 		return getActiveAndCompletedIdsFromStateMap(latestState);
 	}
@@ -1342,11 +1384,15 @@ export class Core {
 		});
 		const resolvedStatus = isDraft ? "Draft" : status || config?.defaultStatus || FALLBACK_STATUS;
 
+		// TASK-97.4: prefetch existing IDs (incl. git fetch) OUTSIDE the create-lock so the
+		// lock body stays local-FS-only. Drafts/Docs/Decisions have no fetch → skip prefetch.
+		const prefetchedTaskIds = entityType === EntityType.Task ? await this.getActiveAndCompletedTaskIds() : undefined;
+
 		const { task, filePath } = await this.withCreateLock(async () => {
 			const parentTaskId = requestedParentTaskId
 				? await this.resolveParentTaskIdForCreate(requestedParentTaskId)
 				: undefined;
-			const id = await this.generateNextId(entityType, isDraft ? undefined : parentTaskId);
+			const id = await this.generateNextId(entityType, isDraft ? undefined : parentTaskId, prefetchedTaskIds);
 			const ordinal = await this.resolveCreateOrdinal(input.ordinal, isDraft);
 			const task: Task = {
 				id,
@@ -2100,27 +2146,88 @@ export class Core {
 	}
 
 	async updateTaskFromInput(taskId: string, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {
-		const task = await this.fs.loadTask(taskId);
-		if (!task) {
+		const requestedStatus = input.status?.trim().toLowerCase();
+		// Draft-demote branch — unchanged (uses withCreateLock internally).
+		if (requestedStatus === "draft") {
+			const task = await this.fs.loadTask(taskId);
+			if (!task) {
+				throw new Error(`Task not found: ${taskId}`);
+			}
+			return await this.demoteTaskWithUpdates(task, input, autoCommit);
+		}
+		// TASK-97.2: non-draft edit via cross-process locked read-modify-write.
+		// Protects ALL callers: MCP (editTaskOrDraft), Core.editTask (CLI), web-server.
+		return await this.updateTaskLocked(taskId, input, autoCommit);
+	}
+
+	/**
+	 * TASK-97.2: cross-process locked read-modify-write for task edits.
+	 * Mirrors claim/release pattern (handlers.ts:671,785):
+	 *   getTaskPath → withWriteLock → readTaskFresh → applyTaskUpdateInput → saveTaskUnlocked.
+	 * Git commit, contentStore, status callback run OUTSIDE the lock.
+	 */
+	private async updateTaskLocked(taskId: string, input: TaskUpdateInput, autoCommit?: boolean): Promise<Task> {
+		const taskPath = await getTaskPath(taskId, this);
+		if (!taskPath) {
 			throw new Error(`Task not found: ${taskId}`);
 		}
 
-		const requestedStatus = input.status?.trim().toLowerCase();
-		if (requestedStatus === "draft") {
-			return await this.demoteTaskWithUpdates(task, input, autoCommit);
+		const result = await this.fs.withWriteLock(taskPath, async () => {
+			// Fresh read bypassing Bun.file cache (critical after atomicWrite rename).
+			const lockedTask = await this.fs.readTaskFresh(taskId);
+			if (!lockedTask) {
+				throw new Error(`Task not found: ${taskId}`);
+			}
+
+			const originalSnapshot: Task = { ...lockedTask };
+			const oldStatus = lockedTask.status ?? "";
+
+			const { mutated } = await this.applyTaskUpdateInput(lockedTask, input, async (status) =>
+				this.requireCanonicalStatus(status),
+			);
+
+			if (!mutated) {
+				return { kind: "not_mutated" as const, task: lockedTask };
+			}
+
+			// updatedDate logic — mirror updateTask (backlog.ts)
+			if (hasUpdatedDateRelevantChanges(originalSnapshot, lockedTask)) {
+				lockedTask.updatedDate = new Date().toISOString().slice(0, 16).replace("T", " ");
+			} else if (originalSnapshot.updatedDate) {
+				lockedTask.updatedDate = originalSnapshot.updatedDate;
+			} else {
+				delete lockedTask.updatedDate;
+			}
+
+			normalizeAssignee(lockedTask);
+			// saveTaskUnlocked (NOT saveTask) — avoids redundant in-process mutex.
+			const savedPath = await this.fs.saveTaskUnlocked(lockedTask);
+			const newStatus = lockedTask.status ?? "";
+			return { kind: "mutated" as const, task: lockedTask, savedPath, oldStatus, newStatus };
+		});
+
+		if (result.kind === "not_mutated") {
+			return result.task;
 		}
 
-		const { mutated } = await this.applyTaskUpdateInput(task, input, async (status) =>
-			this.requireCanonicalStatus(status),
-		);
-
-		if (!mutated) {
-			return task;
+		// --- OUTSIDE lock: contentStore, git, status callback ---
+		if (this.contentStore) {
+			const savedTask = await this.fs.readTaskFresh(taskId);
+			if (savedTask) {
+				this.contentStore.upsertTask(savedTask);
+			}
 		}
 
-		await this.updateTask(task, autoCommit);
-		const refreshed = await this.fs.loadTask(taskId);
-		return refreshed ?? task;
+		if ((await this.shouldAutoCommit(autoCommit)) && result.savedPath) {
+			await this.git.addAndCommitTaskFile(result.task.id, result.savedPath, "update");
+		}
+
+		if (result.oldStatus !== result.newStatus) {
+			await this.executeStatusChangeCallback(result.task, result.oldStatus, result.newStatus);
+		}
+
+		const refreshed = await this.fs.readTaskFresh(taskId);
+		return refreshed ?? result.task;
 	}
 
 	async updateDraft(task: Task, autoCommit?: boolean): Promise<void> {
@@ -2199,8 +2306,11 @@ export class Core {
 
 		const canonicalStatus = await this.requireCanonicalStatus(targetStatus);
 
+		// TASK-97.4: prefetch existing IDs (incl. git fetch) OUTSIDE the create-lock.
+		const prefetchedTaskIds = await this.getActiveAndCompletedTaskIds();
+
 		const { promotedTask, savedPath } = await this.withCreateLock(async () => {
-			const newTaskId = await this.generateNextId(EntityType.Task, draft.parentTaskId);
+			const newTaskId = await this.generateNextId(EntityType.Task, draft.parentTaskId, prefetchedTaskIds);
 			const draftPath = draft.filePath;
 
 			const promotedTask: Task = {
@@ -2319,10 +2429,60 @@ export class Core {
 		return await this.updateTaskFromInput(taskId, input, autoCommit);
 	}
 
-	async updateTasksBulk(tasks: Task[], commitMessage?: string, autoCommit?: boolean): Promise<void> {
-		// Update all tasks without committing individually
+	// TASK-97.3: Default fields that bulk updates are allowed to change.
+	// Other fields are always taken from the fresh (readTaskFresh) state to prevent
+	// whole-task clobbering of concurrent edits by other processes.
+	private static readonly DEFAULT_BULK_MERGE_FIELDS: ReadonlyArray<keyof Task> = ["ordinal", "status", "milestone"];
+
+	/**
+	 * TASK-97.3: Merge only the specified fields from the bulk-update task into the
+	 * fresh task. All other fields are preserved from fresh. This prevents a bulk
+	 * operation (e.g. reorder) from clobbering concurrent edits (e.g. description
+	 * change) by another process — the core data-loss scenario from TASK-97 §3.4.
+	 */
+	private mergeBulkTask(fresh: Task, bulk: Task, mergeFields: ReadonlyArray<keyof Task>): Task {
+		const merged = { ...fresh };
+		for (const field of mergeFields) {
+			// Copy verbatim — including undefined (correctly clears milestone when null/undefined)
+			(merged as unknown as Record<string, unknown>)[field as string] = (bulk as unknown as Record<string, unknown>)[
+				field as string
+			];
+		}
+		return merged;
+	}
+
+	async updateTasksBulk(
+		tasks: Task[],
+		commitMessage?: string,
+		autoCommit?: boolean,
+		mergeFields: ReadonlyArray<keyof Task> = Core.DEFAULT_BULK_MERGE_FIELDS,
+	): Promise<void> {
+		// TASK-97.3: per-file cross-process lock + readTaskFresh + field-merge + saveTaskUnlocked.
+		// Each file gets its own withWriteLock (acquired sequentially, not nested → no deadlock).
 		for (const task of tasks) {
-			await this.updateTask(task, false); // Don't auto-commit each one
+			const taskPath = task.filePath ?? (await getTaskPath(task.id, this));
+			if (!taskPath) continue;
+
+			await this.fs.withWriteLock(taskPath, async () => {
+				const fresh = await this.fs.readTaskFresh(task.id);
+				if (!fresh) return; // task moved/deleted by another process — skip
+
+				const merged = this.mergeBulkTask(fresh, task, mergeFields);
+
+				// updatedDate: only update if relevant fields changed (mirror updateTask logic)
+				if (hasUpdatedDateRelevantChanges(fresh, merged)) {
+					merged.updatedDate = new Date().toISOString().slice(0, 16).replace("T", " ");
+				}
+
+				normalizeAssignee(merged);
+				await this.fs.saveTaskUnlocked(merged);
+			});
+
+			// contentStore update outside lock
+			if (this.contentStore) {
+				const saved = await this.fs.readTaskFresh(task.id);
+				if (saved) this.contentStore.upsertTask(saved);
+			}
 		}
 
 		// Commit all changes at once if auto-commit is enabled
@@ -2362,11 +2522,15 @@ export class Core {
 			seen.add(id);
 		}
 
-		// Load all tasks from the ordered list - use getTask to include cross-branch tasks from the store
+		// TASK-97.3: Load all tasks from the ordered list — prefer readTaskFresh (bypasses
+		// Bun.file cache, reflects concurrent writes) with fallback to getTask (ContentStore,
+		// includes cross-branch tasks not on local disk).
 		const loadedTasks = await Promise.all(
 			orderedTaskIds.map(async (id) => {
-				const task = await this.getTask(id);
-				return task;
+				const fresh = await this.fs.readTaskFresh(id);
+				if (fresh) return fresh;
+				// Fallback: cross-branch tasks exist only in ContentStore, not on local disk
+				return await this.getTask(id);
 			}),
 		);
 
@@ -2480,7 +2644,7 @@ export class Core {
 		const activeTasks = await this.fs.listTasks();
 		const sanitizedTasks = this.sanitizeArchivedTaskLinks(activeTasks, normalizedTaskId);
 		if (sanitizedTasks.length > 0) {
-			await this.updateTasksBulk(sanitizedTasks, undefined, false);
+			await this.updateTasksBulk(sanitizedTasks, undefined, false, ["dependencies", "references"]);
 		}
 
 		if (await this.shouldAutoCommit(autoCommit)) {
@@ -2622,13 +2786,15 @@ export class Core {
 
 	async promoteDraft(draftId: string, autoCommit?: boolean): Promise<boolean> {
 		let success = false;
+		// TASK-97.4: prefetch existing IDs (incl. git fetch) OUTSIDE the create-lock.
+		const prefetchedTaskIds = await this.getActiveAndCompletedTaskIds();
 		try {
 			success = await this.withCreateLock(async () => {
 				const draft = await this.fs.loadDraft(draftId);
 				if (!draft?.filePath) return false;
 
 				const config = await this.fs.loadConfig();
-				const newTaskId = await this.generateNextId(EntityType.Task, draft.parentTaskId);
+				const newTaskId = await this.generateNextId(EntityType.Task, draft.parentTaskId, prefetchedTaskIds);
 				const promotedStatus =
 					!draft.status || draft.status.trim().toLowerCase() === "draft"
 						? config?.defaultStatus || FALLBACK_STATUS

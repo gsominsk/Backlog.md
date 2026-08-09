@@ -56,12 +56,12 @@ interface CreateLockTarget {
 
 const DEFAULT_CREATE_LOCK_TIMEOUT_MS = 30_000;
 const DEFAULT_CREATE_LOCK_RETRY_DELAY_MS = 100;
-const DEFAULT_CREATE_LOCK_STALE_MS = 10_000;
+const DEFAULT_CREATE_LOCK_STALE_MS = 60_000;
 
 // HYBRID-BOARD: write-lock constants — do not reformat
 const DEFAULT_WRITE_LOCK_TIMEOUT_MS = 30_000;
 const DEFAULT_WRITE_LOCK_RETRY_DELAY_MS = 50;
-const DEFAULT_WRITE_LOCK_STALE_MS = 10_000;
+const DEFAULT_WRITE_LOCK_STALE_MS = 60_000;
 export const WRITE_LOCK_ERROR_CODE = "EWRITELOCK";
 
 export const CREATE_LOCK_ERROR_CODE = "ECREATELOCK";
@@ -362,6 +362,9 @@ export class FileSystem {
 				lockfilePath: lockDir,
 				realpath: true,
 				stale: staleMs,
+				onCompromised: (err) => {
+					console.error(`[lock-compromised] create-lock ${lockTarget.targetPath}`, err);
+				},
 				retries: {
 					retries,
 					factor: 1,
@@ -435,6 +438,9 @@ export class FileSystem {
 					lockfilePath: lockFile,
 					realpath: false, // HYBRID-BOARD: file may not exist yet on first create
 					stale: staleMs,
+					onCompromised: (err) => {
+						console.error(`[lock-compromised] write-lock ${targetPath}`, err);
+					},
 					retries: { retries, factor: 1, minTimeout: retryDelayMs, maxTimeout: retryDelayMs, randomize: false },
 				});
 			} catch (error) {

@@ -89,6 +89,16 @@ function registerStartCommand(mcpCmd: Command): void {
 				process.once("SIGPIPE", () => shutdown("SIGPIPE"));
 			}
 
+			// Safety net for uncaught exceptions (e.g., a throw from a setTimeout
+			// callback in proper-lockfile's updateLock, or any other unexpected error).
+			// The process is in an undefined state — log and exit immediately. Do NOT
+			// attempt graceful shutdown (server.stop() may hang). This complements the
+			// signal handlers above and prevents silent crashes.
+			process.once("uncaughtException", (error) => {
+				console.error("[uncaught-exception] MCP server exiting:", error);
+				process.exit(1);
+			});
+
 			// Async init — if killed here, signal handlers above ensure clean exit
 			try {
 				const runtimeCwd = await resolveRuntimeCwd({ cwd: options.cwd });
